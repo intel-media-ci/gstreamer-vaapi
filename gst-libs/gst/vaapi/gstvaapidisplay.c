@@ -342,6 +342,37 @@ get_profiles (GArray * configs)
   return out_profiles;
 }
 
+/* Get all supported entry points for a given profile */
+static GArray *
+get_entrypoints_for_profile (GArray * configs, GstVaapiProfile profile)
+{
+  GstVaapiProfileConfig *config;
+  GArray *out_entrypoints;
+  guint i;
+
+  if (!configs)
+    return NULL;
+
+  out_entrypoints = g_array_new (FALSE, FALSE, sizeof (GstVaapiEntrypoint));
+  if (!out_entrypoints)
+    return NULL;
+
+  for (i = 0; i < configs->len; i++) {
+    config = &g_array_index (configs, GstVaapiProfileConfig, i);
+    if (config->profile != profile)
+      continue;
+
+    g_array_append_val (out_entrypoints, config->entrypoint);
+  }
+
+  if (out_entrypoints->len == 0) {
+    g_array_unref (out_entrypoints);
+    out_entrypoints = NULL;
+  }
+
+  return out_entrypoints;
+}
+
 /* Find format info */
 static const GstVaapiFormatInfo *
 find_format_info (GArray * formats, GstVideoFormat format)
@@ -1546,6 +1577,30 @@ gst_vaapi_display_get_encode_profiles (GstVaapiDisplay * display)
   if (!ensure_profiles (display))
     return NULL;
   return get_profiles (GST_VAAPI_DISPLAY_GET_PRIVATE (display)->encoders);
+}
+
+/**
+ * gst_vaapi_display_get_encode_entrypoints_for_profile:
+ * @display: a #GstVaapiDisplay
+ *
+ * Gets the supported entry points of a given profile for encoding.
+ * The caller owns an extra reference to the resulting array of
+ * #GstVaapiEntrypoint elements, so shall be released with g_array_unref()
+ * after usage.
+ *
+ * Return value: a newly allocated #GArray, or %NULL or error or if
+ *   no finding entry point for the profile.
+ */
+GArray *
+gst_vaapi_display_get_encode_entrypoints_for_profile (GstVaapiDisplay *
+    display, GstVaapiProfile profile)
+{
+  g_return_val_if_fail (display != NULL, NULL);
+
+  if (!ensure_profiles (display))
+    return NULL;
+  return get_entrypoints_for_profile (GST_VAAPI_DISPLAY_GET_PRIVATE
+      (display)->encoders, profile);
 }
 
 /**
