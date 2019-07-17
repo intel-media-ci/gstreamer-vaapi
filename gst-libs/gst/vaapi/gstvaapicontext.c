@@ -314,6 +314,7 @@ config_create (GstVaapiDisplay * const display,
 #if USE_H264_FEI_ENCODER
       if (cip->entrypoint == GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_FEI) {
         attrib->type = (VAConfigAttribType) VAConfigAttribFEIFunctionType;
+        attrib->value = cip->config.encoder.fei_function;
         attrib = &attribs[++attrib_index];
         g_assert (attrib_index < G_N_ELEMENTS (attribs));
         /* FIXME: Query the read-only supported MV predictors */
