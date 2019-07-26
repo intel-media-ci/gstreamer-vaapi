@@ -417,8 +417,8 @@ update_ref_list (GstVaapiEncoderVP9 * encoder, GstVaapiEncPicture * picture,
       gst_vaapi_surface_proxy_unref (ref);
       break;
     case GST_VAAPI_ENCODER_VP9_REF_PIC_MODE_1:
-      gst_vaapi_surface_proxy_replace (&encoder->
-          ref_list[encoder->ref_list_idx], ref);
+      gst_vaapi_surface_proxy_replace (&encoder->ref_list[encoder->
+              ref_list_idx], ref);
       gst_vaapi_surface_proxy_unref (ref);
       encoder->ref_list_idx = (encoder->ref_list_idx + 1) % GST_VP9_REF_FRAMES;
       break;
@@ -522,11 +522,18 @@ gst_vaapi_encoder_vp9_reconfigure (GstVaapiEncoder * base_encoder)
   return set_context_info (base_encoder);
 }
 
-static gboolean
-gst_vaapi_encoder_vp9_init (GstVaapiEncoder * base_encoder)
-{
-  GstVaapiEncoderVP9 *const encoder = GST_VAAPI_ENCODER_VP9 (base_encoder);
 
+struct _GstVaapiEncoderVP9Class
+{
+  GstVaapiEncoderClass parent_class;
+};
+
+G_DEFINE_TYPE (GstVaapiEncoderVP9, gst_vaapi_encoder_vp9,
+    GST_TYPE_VAAPI_ENCODER);
+
+static void
+gst_vaapi_encoder_vp9_init (GstVaapiEncoderVP9 * encoder)
+{
   encoder->frame_num = 0;
   encoder->loop_filter_level = DEFAULT_LOOP_FILTER_LEVEL;
   encoder->sharpness_level = DEFAULT_SHARPNESS_LEVEL;
@@ -537,13 +544,12 @@ gst_vaapi_encoder_vp9_init (GstVaapiEncoder * base_encoder)
   memset (encoder->ref_list, 0,
       G_N_ELEMENTS (encoder->ref_list) * sizeof (encoder->ref_list[0]));
   encoder->ref_list_idx = 0;
-
-  return TRUE;
 }
 
 static void
-gst_vaapi_encoder_vp9_finalize (GstVaapiEncoder * base_encoder)
+gst_vaapi_encoder_vp9_finalize (GObject * object)
 {
+  G_OBJECT_CLASS (gst_vaapi_encoder_vp9_parent_class)->finalize (object);
 }
 
 static GstVaapiEncoderStatus
@@ -576,14 +582,21 @@ gst_vaapi_encoder_vp9_set_property (GstVaapiEncoder * base_encoder,
 
 GST_VAAPI_ENCODER_DEFINE_CLASS_DATA (VP9);
 
-static inline const GstVaapiEncoderClass *
-gst_vaapi_encoder_vp9_class (void)
+static void
+gst_vaapi_encoder_vp9_class_init (GstVaapiEncoderVP9Class * klass)
 {
-  static const GstVaapiEncoderClass GstVaapiEncoderVP9Class = {
-    GST_VAAPI_ENCODER_CLASS_INIT (VP9, vp9),
-    .set_property = gst_vaapi_encoder_vp9_set_property,
-  };
-  return &GstVaapiEncoderVP9Class;
+  GObjectClass *const object_class = G_OBJECT_CLASS (klass);
+  GstVaapiEncoderClass *const encoder_class = GST_VAAPI_ENCODER_CLASS (klass);
+
+  encoder_class->class_data = &g_class_data;
+  encoder_class->reconfigure = gst_vaapi_encoder_vp9_reconfigure;
+  encoder_class->get_default_properties =
+      gst_vaapi_encoder_vp9_get_default_properties;
+  encoder_class->reordering = gst_vaapi_encoder_vp9_reordering;
+  encoder_class->encode = gst_vaapi_encoder_vp9_encode;
+  encoder_class->flush = gst_vaapi_encoder_vp9_flush;
+  encoder_class->set_property = gst_vaapi_encoder_vp9_set_property;
+  object_class->finalize = gst_vaapi_encoder_vp9_finalize;
 }
 
 /**
@@ -597,7 +610,19 @@ gst_vaapi_encoder_vp9_class (void)
 GstVaapiEncoder *
 gst_vaapi_encoder_vp9_new (GstVaapiDisplay * display)
 {
-  return gst_vaapi_encoder_new (gst_vaapi_encoder_vp9_class (), display);
+  gboolean ret;
+  GstVaapiEncoder *encoder =
+      g_object_new (GST_TYPE_VAAPI_ENCODER_VP9, "display", display, NULL);
+  if (encoder) {
+    /* TODO: init_properties can not be called in _init function, the "display"
+       property can just be set correctly after _init function */
+    ret = gst_vaapi_encoder_init_properties (GST_VAAPI_ENCODER (encoder));
+    if (!ret) {
+      g_object_unref (encoder);
+      encoder = NULL;
+    }
+  }
+  return encoder;
 }
 
 /**
@@ -614,10 +639,10 @@ gst_vaapi_encoder_vp9_new (GstVaapiDisplay * display)
 GPtrArray *
 gst_vaapi_encoder_vp9_get_default_properties (void)
 {
-  const GstVaapiEncoderClass *const klass = gst_vaapi_encoder_vp9_class ();
+  const GstVaapiEncoderClassData *class_data = &g_class_data;
   GPtrArray *props;
 
-  props = gst_vaapi_encoder_properties_get_default (klass);
+  props = gst_vaapi_encoder_properties_get_default (class_data);
   if (!props)
     return NULL;
 
