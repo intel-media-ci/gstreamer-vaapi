@@ -858,6 +858,11 @@ gst_vaapipostproc_process_vpp (GstBaseTransform * trans, GstBuffer * inbuf,
   }
   copy_metadata (postproc, outbuf, inbuf);
 
+  /* crop_meta is already accounted for in outbuf, so remove it */
+  crop_meta = gst_buffer_get_video_crop_meta (outbuf);
+  if (crop_meta)
+    gst_buffer_remove_meta (outbuf, (GstMeta *) crop_meta);
+
   if (deint && deint_refs)
     ds_add_buffer (ds, inbuf);
   postproc->use_vpp = TRUE;
@@ -1546,6 +1551,12 @@ gst_vaapipostproc_propose_allocation (GstBaseTransform * trans,
   GstStructure *structure;
   gint allocation_width, allocation_height;
   gint negotiated_width, negotiated_height;
+
+  /* advertise to upstream that we can handle video meta and crop meta */
+  if (decide_query) {
+    gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+    gst_query_add_allocation_meta (query, GST_VIDEO_CROP_META_API_TYPE, NULL);
+  }
 
   negotiated_width = GST_VIDEO_INFO_WIDTH (&postproc->sinkpad_info);
   negotiated_height = GST_VIDEO_INFO_HEIGHT (&postproc->sinkpad_info);
