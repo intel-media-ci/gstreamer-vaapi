@@ -655,6 +655,7 @@ ensure_image_formats (GstVaapiDisplay * display)
 
   GST_VAAPI_DISPLAY_LOCK (display);
   if (priv->image_formats) {
+    g_assert (priv->video_format_map);
     GST_VAAPI_DISPLAY_UNLOCK (display);
     return TRUE;
   }
@@ -676,6 +677,12 @@ ensure_image_formats (GstVaapiDisplay * display)
   GST_DEBUG ("%d image formats", n);
   for (i = 0; i < n; i++)
     GST_DEBUG ("  %" GST_FOURCC_FORMAT, GST_FOURCC_ARGS (formats[i].fourcc));
+
+  priv->video_format_map = gst_vaapi_video_format_create_map (formats, n);
+  if (priv->video_format_map == NULL) {
+    GST_ERROR ("fail to create map between gst video format and vaImageFormat");
+    goto cleanup;
+  }
 
   append_formats (display, priv->image_formats, formats, NULL, n);
   g_array_sort_with_data (priv->image_formats, compare_yuv_formats, display);
@@ -834,6 +841,11 @@ gst_vaapi_display_destroy (GstVaapiDisplay * display)
     priv->subpicture_formats = NULL;
   }
 
+  if (priv->video_format_map) {
+    g_array_free (priv->video_format_map, TRUE);
+    priv->video_format_map = NULL;
+  }
+
   if (priv->properties) {
     g_array_free (priv->properties, TRUE);
     priv->properties = NULL;
@@ -909,6 +921,12 @@ gst_vaapi_display_create (GstVaapiDisplay * display,
   GST_INFO_OBJECT (display, "new display addr=%p", display);
   g_free (priv->display_name);
   priv->display_name = g_strdup (info.display_name);
+
+  if (!ensure_image_formats (display)) {
+    gst_vaapi_display_destroy (display);
+    return FALSE;
+  }
+
   return TRUE;
 }
 
@@ -2096,7 +2114,7 @@ gst_vaapi_display_reset_texture_map (GstVaapiDisplay * display)
 }
 
 const GArray *
-gst_vaapi_display_get_video_format_map (GstVaapiDisplay * display)
+gst_vaapi_display_get_video_format_map (const GstVaapiDisplay * display)
 {
   g_return_val_if_fail (display != NULL, NULL);
   g_return_val_if_fail (display->priv != NULL, NULL);
