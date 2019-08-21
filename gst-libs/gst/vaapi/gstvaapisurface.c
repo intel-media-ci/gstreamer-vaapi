@@ -140,11 +140,15 @@ gst_vaapi_surface_create_full (GstVaapiSurface * surface,
   VASurfaceAttribExternalBuffers extbuf;
   gboolean extbuf_needed = FALSE;
 
-  va_format = gst_vaapi_video_format_to_va_format (format);
+  va_format =
+      gst_vaapi_video_format_to_va_format (GST_VAAPI_OBJECT_DISPLAY (surface),
+      format);
   if (!va_format)
     goto error_unsupported_format;
 
-  chroma_type = gst_vaapi_video_format_get_chroma_type (format);
+  chroma_type =
+      gst_vaapi_video_format_get_chroma_type (GST_VAAPI_OBJECT_DISPLAY
+      (surface), format);
   if (!chroma_type)
     goto error_unsupported_format;
 
@@ -239,11 +243,15 @@ gst_vaapi_surface_create_from_buffer_proxy (GstVaapiSurface * surface,
 
   gst_vaapi_buffer_proxy_replace (&surface->extbuf_proxy, proxy);
 
-  va_format = gst_vaapi_video_format_to_va_format (format);
+  va_format =
+      gst_vaapi_video_format_to_va_format (GST_VAAPI_OBJECT_DISPLAY (surface),
+      format);
   if (!va_format)
     goto error_unsupported_format;
 
-  chroma_type = gst_vaapi_video_format_get_chroma_type (format);
+  chroma_type =
+      gst_vaapi_video_format_get_chroma_type (GST_VAAPI_OBJECT_DISPLAY
+      (surface), format);
   if (!chroma_type)
     goto error_unsupported_format;
 
