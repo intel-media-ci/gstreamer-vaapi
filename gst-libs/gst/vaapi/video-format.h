@@ -25,6 +25,7 @@
 #ifndef GST_VAAPI_VIDEO_FORMAT_H
 #define GST_VAAPI_VIDEO_FORMAT_H
 
+#include "gstvaapidisplay.h"
 #include <gst/video/video.h>
 
 G_BEGIN_DECLS
@@ -33,31 +34,36 @@ const gchar *
 gst_vaapi_video_format_to_string (GstVideoFormat format);
 
 gboolean
-gst_vaapi_video_format_is_rgb (GstVideoFormat format);
+gst_vaapi_video_format_is_rgb (const GstVaapiDisplay * display, GstVideoFormat format);
 
 gboolean
-gst_vaapi_video_format_is_yuv (GstVideoFormat format);
+gst_vaapi_video_format_is_yuv (const GstVaapiDisplay * display, GstVideoFormat format);
 
 GstVideoFormat
-gst_vaapi_video_format_from_va_fourcc (guint32 fourcc);
+gst_vaapi_video_format_from_va_fourcc (const GstVaapiDisplay * display, guint32 fourcc);
 
 GstVideoFormat
-gst_vaapi_video_format_from_va_format (const VAImageFormat * va_format);
+gst_vaapi_video_format_from_va_format (const GstVaapiDisplay * display,
+                                       const VAImageFormat * va_format);
 
 const VAImageFormat *
-gst_vaapi_video_format_to_va_format (GstVideoFormat format);
+gst_vaapi_video_format_to_va_format (const GstVaapiDisplay * display,
+                                     GstVideoFormat format);
 
 guint
-gst_vaapi_video_format_get_chroma_type (GstVideoFormat format);
+gst_vaapi_video_format_get_chroma_type (const GstVaapiDisplay * display,
+                                        GstVideoFormat format);
 
 guint
-gst_vaapi_video_format_get_score (GstVideoFormat format);
+gst_vaapi_video_format_get_score (const GstVaapiDisplay * display,
+                                  GstVideoFormat format);
 
 GstVideoFormat
 gst_vaapi_video_format_from_chroma (guint chroma);
 
 GstVideoFormat
-gst_vaapi_video_format_get_best_native (GstVideoFormat format);
+gst_vaapi_video_format_get_best_native (const GstVaapiDisplay * display,
+                                        GstVideoFormat format);
 
 G_END_DECLS
 

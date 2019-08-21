@@ -29,7 +29,7 @@
 #include <gst/gst.h>
 #include <gst/vaapi/gstvaapitypes.h>
 #include <gst/vaapi/gstvaapiprofile.h>
-#include <gst/vaapi/video-format.h>
+#include <gst/video/video-format.h>
 
 G_BEGIN_DECLS
 

@@ -805,8 +805,8 @@ allocator_configure_surface_try_other_format (GstVaapiDisplay * display,
   GstVideoInfo sinfo;
 
   /* Find a best native surface format if possible */
-  fmt = gst_vaapi_video_format_get_best_native
-      (GST_VIDEO_INFO_FORMAT (allocation_info));
+  fmt = gst_vaapi_video_format_get_best_native (display,
+      GST_VIDEO_INFO_FORMAT (allocation_info));
   if (fmt == GST_VIDEO_FORMAT_UNKNOWN
       || fmt == GST_VIDEO_INFO_FORMAT (allocation_info))
     goto error_invalid_format;

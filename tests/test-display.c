@@ -24,6 +24,7 @@
 
 #define _GNU_SOURCE
 #include "gst/vaapi/sysdeps.h"
+#include "gst/vaapi/video-format.h"
 #include <gst/video/video.h>
 #if USE_DRM
 # include <gst/vaapi/gstvaapidisplay_drm.h>
@@ -116,7 +117,7 @@ print_format_rgb (const VAImageFormat * va_format)
 }
 
 static void
-print_formats (GArray * formats, const gchar * name)
+print_formats (GstVaapiDisplay * display, GArray * formats, const gchar * name)
 {
   guint i;
 
@@ -128,11 +129,11 @@ print_formats (GArray * formats, const gchar * name)
 
     g_print ("  %s:", gst_vaapi_video_format_to_string (format));
 
-    va_format = gst_vaapi_video_format_to_va_format (format);
+    va_format = gst_vaapi_video_format_to_va_format (display, format);
     if (!va_format)
       g_error ("could not determine VA format");
 
-    if (gst_vaapi_video_format_is_yuv (format))
+    if (gst_vaapi_video_format_is_yuv (display, format))
       print_format_yuv (va_format);
     else
       print_format_rgb (va_format);
@@ -188,14 +189,14 @@ dump_info (GstVaapiDisplay * display)
   if (!formats)
     g_error ("could not get VA image formats");
 
-  print_formats (formats, "image");
+  print_formats (display, formats, "image");
   g_array_unref (formats);
 
   formats = gst_vaapi_display_get_subpicture_formats (display);
   if (!formats)
     g_error ("could not get VA subpicture formats");
 
-  print_formats (formats, "subpicture");
+  print_formats (display, formats, "subpicture");
   g_array_unref (formats);
 
   dump_properties (display);

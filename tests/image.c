@@ -344,7 +344,7 @@ image_draw_rectangle (GstVaapiImage * image,
   if (flags)
     y /= 2, height /= 2;
 
-  if (gst_vaapi_video_format_is_yuv (image_format))
+  if (gst_vaapi_video_format_is_yuv (display, image_format))
     color = argb2yuv (color);
 
   draw_rect (pixels, stride, x, y, width, height, color);

@@ -157,6 +157,7 @@ gst_vaapi_video_format_to_string (GstVideoFormat format)
 
 /**
  * gst_vaapi_video_format_is_rgb:
+ * @display: a #GstVaapiDisplay
  * @format: a #GstVideoFormat
  *
  * Checks whether the format is an RGB format.
@@ -164,7 +165,8 @@ gst_vaapi_video_format_to_string (GstVideoFormat format)
  * Return value: %TRUE if @format is RGB format
  */
 gboolean
-gst_vaapi_video_format_is_rgb (GstVideoFormat format)
+gst_vaapi_video_format_is_rgb (const GstVaapiDisplay * display,
+    GstVideoFormat format)
 {
   const GstVideoFormatMap *const m = get_map (format);
 
@@ -173,6 +175,7 @@ gst_vaapi_video_format_is_rgb (GstVideoFormat format)
 
 /**
  * gst_vaapi_video_format_is_yuv:
+ * @display: a #GstVaapiDisplay
  * @format: a #GstVideoFormat
  *
  * Checks whether the format is an YUV format.
@@ -180,7 +183,8 @@ gst_vaapi_video_format_is_rgb (GstVideoFormat format)
  * Return value: %TRUE if @format is YUV format
  */
 gboolean
-gst_vaapi_video_format_is_yuv (GstVideoFormat format)
+gst_vaapi_video_format_is_yuv (const GstVaapiDisplay * display,
+    GstVideoFormat format)
 {
   const GstVideoFormatMap *const m = get_map (format);
 
@@ -189,6 +193,7 @@ gst_vaapi_video_format_is_yuv (GstVideoFormat format)
 
 /**
  * gst_vaapi_video_format_from_va_fourcc:
+ * @display: a #GstVaapiDisplay
  * @fourcc: a FOURCC value
  *
  * Converts a VA fourcc into the corresponding #GstVideoFormat. If no
@@ -197,7 +202,8 @@ gst_vaapi_video_format_is_yuv (GstVideoFormat format)
  * Return value: the #GstVideoFormat corresponding to the VA @fourcc
  */
 GstVideoFormat
-gst_vaapi_video_format_from_va_fourcc (guint32 fourcc)
+gst_vaapi_video_format_from_va_fourcc (const GstVaapiDisplay * display,
+    guint32 fourcc)
 {
   const GstVideoFormatMap *m;
 
@@ -213,6 +219,7 @@ gst_vaapi_video_format_from_va_fourcc (guint32 fourcc)
 
 /**
  * gst_vaapi_video_format_from_va_format:
+ * @display: a #GstVaapiDisplay
  * @va_format: a #VAImageFormat
  *
  * Converts a VA image format into the corresponding #GstVideoFormat.
@@ -222,7 +229,8 @@ gst_vaapi_video_format_from_va_fourcc (guint32 fourcc)
  * Return value: the #GstVideoFormat describing the @va_format
  */
 GstVideoFormat
-gst_vaapi_video_format_from_va_format (const VAImageFormat * va_format)
+gst_vaapi_video_format_from_va_format (const GstVaapiDisplay * display,
+    const VAImageFormat * va_format)
 {
   const GstVideoFormatMap *m;
 
@@ -235,6 +243,7 @@ gst_vaapi_video_format_from_va_format (const VAImageFormat * va_format)
 
 /**
  * gst_vaapi_video_format_to_va_format:
+ * @display: a #GstVaapiDisplay
  * @format: a #GstVideoFormat
  *
  * Converts a #GstVideoFormat into the corresponding VA image
@@ -244,7 +253,8 @@ gst_vaapi_video_format_from_va_format (const VAImageFormat * va_format)
  * Return value: the VA image format, or %NULL if none was found
  */
 const VAImageFormat *
-gst_vaapi_video_format_to_va_format (GstVideoFormat format)
+gst_vaapi_video_format_to_va_format (const GstVaapiDisplay * display,
+    GstVideoFormat format)
 {
   const GstVideoFormatMap *const m = get_map (format);
 
@@ -253,6 +263,7 @@ gst_vaapi_video_format_to_va_format (GstVideoFormat format)
 
 /**
  * gst_vaapi_video_format_get_chroma_type:
+ * @display: a #GstVaapiDisplay
  * @format: a #GstVideoFormat
  *
  * Converts a #GstVideoFormat into the corresponding #GstVaapiChromaType
@@ -262,7 +273,8 @@ gst_vaapi_video_format_to_va_format (GstVideoFormat format)
  *   was found.
  */
 guint
-gst_vaapi_video_format_get_chroma_type (GstVideoFormat format)
+gst_vaapi_video_format_get_chroma_type (const GstVaapiDisplay * display,
+    GstVideoFormat format)
 {
   const GstVideoFormatMap *const m = get_map (format);
 
@@ -271,6 +283,7 @@ gst_vaapi_video_format_get_chroma_type (GstVideoFormat format)
 
 /**
  * gst_vaapi_video_format_get_score:
+ * @display: a #GstVaapiDisplay
  * @format: a #GstVideoFormat
  *
  * Determines how "native" is this @format. The lower is the returned
@@ -279,7 +292,8 @@ gst_vaapi_video_format_get_chroma_type (GstVideoFormat format)
  * Return value: the @format score, or %G_MAXUINT if none was found
  */
 guint
-gst_vaapi_video_format_get_score (GstVideoFormat format)
+gst_vaapi_video_format_get_score (const GstVaapiDisplay * display,
+    GstVideoFormat format)
 {
   const GstVideoFormatMap *const m = get_map (format);
 
@@ -321,6 +335,7 @@ gst_vaapi_video_format_from_chroma (guint chroma_type)
 
 /**
  * gst_vaapi_video_format_get_best_native:
+ * @display: a #GstVaapiDisplay
  * @format: a #GstVideoFormat
  *
  * Returns the best "native" pixel format that matches a particular
@@ -330,13 +345,14 @@ gst_vaapi_video_format_from_chroma (guint chroma_type)
  * format for #GstVaapiSurface
  **/
 GstVideoFormat
-gst_vaapi_video_format_get_best_native (GstVideoFormat format)
+gst_vaapi_video_format_get_best_native (const GstVaapiDisplay * display,
+    GstVideoFormat format)
 {
   GstVaapiChromaType chroma_type;
 
   if (format == GST_VIDEO_FORMAT_ENCODED)
     return GST_VIDEO_FORMAT_NV12;
 
-  chroma_type = gst_vaapi_video_format_get_chroma_type (format);
+  chroma_type = gst_vaapi_video_format_get_chroma_type (display, format);
   return gst_vaapi_video_format_from_chroma (chroma_type);
 }
