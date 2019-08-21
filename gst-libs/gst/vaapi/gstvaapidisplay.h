@@ -251,6 +251,9 @@ gst_vaapi_display_has_opengl (GstVaapiDisplay * display);
 void
 gst_vaapi_display_reset_texture_map (GstVaapiDisplay * display);
 
+const GArray *
+gst_vaapi_display_get_video_format_map (GstVaapiDisplay * display);
+
 #ifdef G_DEFINE_AUTOPTR_CLEANUP_FUNC
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(GstVaapiDisplay, gst_object_unref)
 #endif

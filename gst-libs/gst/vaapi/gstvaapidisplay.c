@@ -2091,3 +2091,12 @@ gst_vaapi_display_reset_texture_map (GstVaapiDisplay * display)
   if ((map = klass->get_texture_map (display)))
     gst_vaapi_texture_map_reset (map);
 }
+
+const GArray *
+gst_vaapi_display_get_video_format_map (GstVaapiDisplay * display)
+{
+  g_return_val_if_fail (display != NULL, NULL);
+  g_return_val_if_fail (display->priv != NULL, NULL);
+  g_return_val_if_fail (display->priv->video_format_map != NULL, NULL);
+  return display->priv->video_format_map;
+}

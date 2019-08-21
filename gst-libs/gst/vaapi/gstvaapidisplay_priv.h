@@ -120,6 +120,7 @@ struct _GstVaapiDisplayPrivate
   guint height_mm;
   guint par_n;
   guint par_d;
+  GArray *video_format_map;
   GArray *decoders;
   GArray *encoders;
   GArray *image_formats;
