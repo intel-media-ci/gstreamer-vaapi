@@ -972,7 +972,8 @@ set_context_info (GstVaapiEncoder * encoder)
 
   init_context_info (encoder, cip, get_profile (encoder));
 
-  cip->chroma_type = gst_vaapi_video_format_get_chroma_type (format);
+  cip->chroma_type =
+      gst_vaapi_video_format_get_chroma_type (encoder->display, format);
   cip->width = GST_VAAPI_ENCODER_WIDTH (encoder);
   cip->height = GST_VAAPI_ENCODER_HEIGHT (encoder);
 

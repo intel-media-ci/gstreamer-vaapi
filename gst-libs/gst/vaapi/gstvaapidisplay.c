@@ -181,8 +181,8 @@ append_format (GArray * formats, GstVideoFormat format, guint flags)
 
 /* Append VAImageFormats to formats array */
 static void
-append_formats (GArray * formats, const VAImageFormat * va_formats,
-    guint * flags, guint n)
+append_formats (const GstVaapiDisplay * display, GArray * formats,
+    const VAImageFormat * va_formats, guint * flags, guint n)
 {
   GstVideoFormat format;
   int YV12_idx = -1;
@@ -193,7 +193,7 @@ append_formats (GArray * formats, const VAImageFormat * va_formats,
   for (i = 0; i < n; i++) {
     const VAImageFormat *const va_format = &va_formats[i];
 
-    format = gst_vaapi_video_format_from_va_format (va_format);
+    format = gst_vaapi_video_format_from_va_format (display, va_format);
     if (format == GST_VIDEO_FORMAT_UNKNOWN) {
       GST_DEBUG ("unsupported format %" GST_FOURCC_FORMAT,
           GST_FOURCC_ARGS (va_format->fourcc));
@@ -226,36 +226,38 @@ append_formats (GArray * formats, const VAImageFormat * va_formats,
 
 /* Sort image formats. Prefer YUV formats first */
 static gint
-compare_yuv_formats (gconstpointer a, gconstpointer b)
+compare_yuv_formats (gconstpointer a, gconstpointer b, gpointer user_data)
 {
+  const GstVaapiDisplay *dp = (GstVaapiDisplay *) user_data;
   const GstVideoFormat fmt1 = ((GstVaapiFormatInfo *) a)->format;
   const GstVideoFormat fmt2 = ((GstVaapiFormatInfo *) b)->format;
 
-  const gboolean is_fmt1_yuv = gst_vaapi_video_format_is_yuv (fmt1);
-  const gboolean is_fmt2_yuv = gst_vaapi_video_format_is_yuv (fmt2);
+  const gboolean is_fmt1_yuv = gst_vaapi_video_format_is_yuv (dp, fmt1);
+  const gboolean is_fmt2_yuv = gst_vaapi_video_format_is_yuv (dp, fmt2);
 
   if (is_fmt1_yuv != is_fmt2_yuv)
     return is_fmt1_yuv ? -1 : 1;
 
-  return ((gint) gst_vaapi_video_format_get_score (fmt1) -
-      (gint) gst_vaapi_video_format_get_score (fmt2));
+  return ((gint) gst_vaapi_video_format_get_score (dp, fmt1) -
+      (gint) gst_vaapi_video_format_get_score (dp, fmt2));
 }
 
 /* Sort subpicture formats. Prefer RGB formats first */
 static gint
-compare_rgb_formats (gconstpointer a, gconstpointer b)
+compare_rgb_formats (gconstpointer a, gconstpointer b, gpointer user_data)
 {
+  const GstVaapiDisplay *dp = (GstVaapiDisplay *) user_data;
   const GstVideoFormat fmt1 = ((GstVaapiFormatInfo *) a)->format;
   const GstVideoFormat fmt2 = ((GstVaapiFormatInfo *) b)->format;
 
-  const gboolean is_fmt1_rgb = gst_vaapi_video_format_is_rgb (fmt1);
-  const gboolean is_fmt2_rgb = gst_vaapi_video_format_is_rgb (fmt2);
+  const gboolean is_fmt1_rgb = gst_vaapi_video_format_is_rgb (dp, fmt1);
+  const gboolean is_fmt2_rgb = gst_vaapi_video_format_is_rgb (dp, fmt2);
 
   if (is_fmt1_rgb != is_fmt2_rgb)
     return is_fmt1_rgb ? -1 : 1;
 
-  return ((gint) gst_vaapi_video_format_get_score (fmt1) -
-      (gint) gst_vaapi_video_format_get_score (fmt2));
+  return ((gint) gst_vaapi_video_format_get_score (dp, fmt1) -
+      (gint) gst_vaapi_video_format_get_score (dp, fmt2));
 }
 
 /* Check if configs array contains profile at entrypoint */
@@ -675,8 +677,8 @@ ensure_image_formats (GstVaapiDisplay * display)
   for (i = 0; i < n; i++)
     GST_DEBUG ("  %" GST_FOURCC_FORMAT, GST_FOURCC_ARGS (formats[i].fourcc));
 
-  append_formats (priv->image_formats, formats, NULL, n);
-  g_array_sort (priv->image_formats, compare_yuv_formats);
+  append_formats (display, priv->image_formats, formats, NULL, n);
+  g_array_sort_with_data (priv->image_formats, compare_yuv_formats, display);
   success = TRUE;
 
 cleanup:
@@ -727,8 +729,9 @@ ensure_subpicture_formats (GstVaapiDisplay * display)
     flags[i] = to_GstVaapiSubpictureFlags (flags[i]);
   }
 
-  append_formats (priv->subpicture_formats, formats, flags, n);
-  g_array_sort (priv->subpicture_formats, compare_rgb_formats);
+  append_formats (display, priv->subpicture_formats, formats, flags, n);
+  g_array_sort_with_data (priv->subpicture_formats, compare_rgb_formats,
+      display);
   success = TRUE;
 
 cleanup:

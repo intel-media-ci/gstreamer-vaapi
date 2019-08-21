@@ -155,7 +155,8 @@ gst_vaapi_config_surface_attributes_get (GstVaapiDisplay * display,
         if ((attrib->flags & VA_SURFACE_ATTRIB_SETTABLE)) {
           GstVideoFormat fmt;
 
-          fmt = gst_vaapi_video_format_from_va_fourcc (attrib->value.value.i);
+          fmt = gst_vaapi_video_format_from_va_fourcc (display,
+              attrib->value.value.i);
           if (fmt != GST_VIDEO_FORMAT_UNKNOWN)
             num_pixel_formats++;
         }
@@ -195,7 +196,8 @@ gst_vaapi_config_surface_attributes_get (GstVaapiDisplay * display,
       if (!(attrib->flags & VA_SURFACE_ATTRIB_SETTABLE))
         continue;
 
-      fmt = gst_vaapi_video_format_from_va_fourcc (attrib->value.value.i);
+      fmt = gst_vaapi_video_format_from_va_fourcc (display,
+          attrib->value.value.i);
       if (fmt == GST_VIDEO_FORMAT_UNKNOWN)
         continue;
       g_array_append_val (attribs->formats, fmt);
