@@ -246,6 +246,8 @@ gst_vaapipostproc_ensure_filter_caps (GstVaapiPostproc * postproc)
   if (!gst_vaapipostproc_ensure_filter (postproc))
     return FALSE;
 
+  if (postproc->filter_ops)
+    g_ptr_array_unref (postproc->filter_ops);
   postproc->filter_ops = gst_vaapi_filter_get_operations (postproc->filter);
   if (!postproc->filter_ops)
     return FALSE;
@@ -293,6 +295,12 @@ static void
 gst_vaapipostproc_destroy (GstVaapiPostproc * postproc)
 {
   ds_reset (&postproc->deinterlace_state);
+
+  if (postproc->filter_ops) {
+    g_ptr_array_unref (postproc->filter_ops);
+    postproc->filter_ops = NULL;
+  }
+
   gst_vaapipostproc_destroy_filter (postproc);
 
   gst_caps_replace (&postproc->allowed_sinkpad_caps, NULL);
