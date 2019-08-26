@@ -252,6 +252,8 @@ gst_vaapipostproc_ensure_filter_caps (GstVaapiPostproc * postproc)
   if (!postproc->filter_ops)
     return FALSE;
 
+  if (postproc->filter_formats)
+    g_array_unref (postproc->filter_formats);
   postproc->filter_formats = gst_vaapi_filter_get_formats (postproc->filter);
   if (!postproc->filter_formats)
     return FALSE;
@@ -299,6 +301,10 @@ gst_vaapipostproc_destroy (GstVaapiPostproc * postproc)
   if (postproc->filter_ops) {
     g_ptr_array_unref (postproc->filter_ops);
     postproc->filter_ops = NULL;
+  }
+  if (postproc->filter_formats) {
+    g_array_unref (postproc->filter_formats);
+    postproc->filter_formats = NULL;
   }
 
   gst_vaapipostproc_destroy_filter (postproc);
