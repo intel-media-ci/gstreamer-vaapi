@@ -1443,7 +1443,7 @@ gst_vaapipostproc_prepare_output_buffer (GstBaseTransform * trans,
     GstBuffer * inbuf, GstBuffer ** outbuf_ptr)
 {
   GstVaapiPostproc *const postproc = GST_VAAPIPOSTPROC (trans);
-  const GstVideoCropMeta *crop_meta;
+  GstVideoCropMeta *crop_meta;
   GstVideoInfo info;
 
   if (gst_base_transform_is_passthrough (trans)) {
@@ -1452,9 +1452,22 @@ gst_vaapipostproc_prepare_output_buffer (GstBaseTransform * trans,
   }
 
   /* If we are not using vpp crop (i.e. forwarding crop meta to downstream)
-   * then, ensure our output buffer pool is sized for uncropped output */
+   * then, ensure our output buffer pool is sized for uncropped output and
+   * the crop meta is rotated accordingly */
   crop_meta = gst_buffer_get_video_crop_meta (inbuf);
   if (crop_meta && !use_vpp_crop (postproc)) {
+    /* compensate for rotation if needed */
+    switch (gst_vaapi_filter_get_video_direction (postproc->filter)) {
+      case GST_VIDEO_ORIENTATION_90R:
+      case GST_VIDEO_ORIENTATION_90L:
+      case GST_VIDEO_ORIENTATION_UL_LR:
+      case GST_VIDEO_ORIENTATION_UR_LL:
+        G_PRIMITIVE_SWAP (guint, crop_meta->x, crop_meta->y);
+        G_PRIMITIVE_SWAP (guint, crop_meta->width, crop_meta->height);
+      default:
+        break;
+    }
+
     info = postproc->srcpad_info;
     info.width += crop_meta->x;
     info.height += crop_meta->y;
