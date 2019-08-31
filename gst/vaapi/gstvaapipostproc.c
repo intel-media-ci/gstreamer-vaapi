@@ -678,6 +678,57 @@ use_vpp_crop (GstVaapiPostproc * postproc)
   return !postproc->forward_crop;
 }
 
+static void
+rotate_crop_meta_inplace(GstVaapiPostproc *const postproc, GstBuffer * buf)
+{
+  const GstVideoMeta *video_meta;
+  GstVideoCropMeta *crop_meta;
+  guint tmp;
+
+  video_meta = gst_buffer_get_video_meta (buf);
+  crop_meta = gst_buffer_get_video_crop_meta (buf);
+
+  if (!video_meta || !crop_meta)
+    return;
+
+  switch (gst_vaapi_filter_get_video_direction (postproc->filter)) {
+    case GST_VIDEO_ORIENTATION_HORIZ:
+      crop_meta->x = video_meta->width - crop_meta->width - crop_meta->x;
+      break;
+    case GST_VIDEO_ORIENTATION_VERT:
+      crop_meta->y = video_meta->height - crop_meta->height - crop_meta->y;
+      break;
+    case GST_VIDEO_ORIENTATION_90R:
+      tmp = crop_meta->x;
+      crop_meta->x = video_meta->height - crop_meta->height - crop_meta->y;
+      crop_meta->y = tmp;
+      G_PRIMITIVE_SWAP (guint, crop_meta->width, crop_meta->height);
+      break;
+    case GST_VIDEO_ORIENTATION_180:
+      crop_meta->x = video_meta->width - crop_meta->width - crop_meta->x;
+      crop_meta->y = video_meta->height - crop_meta->height - crop_meta->y;
+      break;
+    case GST_VIDEO_ORIENTATION_90L:
+      tmp = crop_meta->x;
+      crop_meta->x = crop_meta->y;
+      crop_meta->y = video_meta->width - crop_meta->width - tmp;
+      G_PRIMITIVE_SWAP (guint, crop_meta->width, crop_meta->height);
+      break;
+    case GST_VIDEO_ORIENTATION_UR_LL:
+      tmp = crop_meta->x;
+      crop_meta->x = video_meta->height - crop_meta->height - crop_meta->y;
+      crop_meta->y = video_meta->width - crop_meta->width - tmp;
+      G_PRIMITIVE_SWAP (guint, crop_meta->width, crop_meta->height);
+      break;
+    case GST_VIDEO_ORIENTATION_UL_LR:
+      G_PRIMITIVE_SWAP (guint, crop_meta->x, crop_meta->y);
+      G_PRIMITIVE_SWAP (guint, crop_meta->width, crop_meta->height);
+      break;
+    default:
+      break;
+  }
+}
+
 static GstFlowReturn
 gst_vaapipostproc_process_vpp (GstBaseTransform * trans, GstBuffer * inbuf,
     GstBuffer * outbuf)
@@ -712,7 +763,10 @@ gst_vaapipostproc_process_vpp (GstBaseTransform * trans, GstBuffer * inbuf,
     crop_rect->y = crop_meta->y;
     crop_rect->width = crop_meta->width;
     crop_rect->height = crop_meta->height;
+  } else if (crop_meta) {
+    rotate_crop_meta_inplace(postproc, inbuf);
   }
+
   if (!crop_rect)
     crop_rect = (GstVaapiRectangle *)
         gst_vaapi_video_meta_get_render_rect (inbuf_meta);
@@ -1452,7 +1506,8 @@ gst_vaapipostproc_prepare_output_buffer (GstBaseTransform * trans,
   }
 
   /* If we are not using vpp crop (i.e. forwarding crop meta to downstream)
-   * then, ensure our output buffer pool is sized for uncropped output */
+   * then, ensure our output buffer pool is sized and rotated for uncropped
+   * output */
   if (gst_buffer_get_video_crop_meta (inbuf) && !use_vpp_crop (postproc)) {
     video_meta = gst_buffer_get_video_meta (inbuf);
     if (!video_meta)
@@ -1461,6 +1516,18 @@ gst_vaapipostproc_prepare_output_buffer (GstBaseTransform * trans,
     info = postproc->srcpad_info;
     info.width = video_meta->width;
     info.height = video_meta->height;
+
+    /* compensate for rotation if needed */
+    switch (gst_vaapi_filter_get_video_direction (postproc->filter)) {
+      case GST_VIDEO_ORIENTATION_90R:
+      case GST_VIDEO_ORIENTATION_UL_LR:
+      case GST_VIDEO_ORIENTATION_90L:
+      case GST_VIDEO_ORIENTATION_UR_LL:
+        G_PRIMITIVE_SWAP (guint, info.width, info.height);
+      default:
+        break;
+    }
+
     ensure_buffer_pool (postproc, &info);
   }
 
