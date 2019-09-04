@@ -1090,10 +1090,35 @@ gst_vaapipostproc_update_sink_caps (GstVaapiPostproc * postproc, GstCaps * caps,
   return TRUE;
 }
 
+static void
+get_scale_factor(GstVaapiPostproc *const postproc, gdouble * w_factor,
+    gdouble * h_factor)
+{
+  switch (gst_vaapi_filter_get_video_direction (postproc->filter)) {
+    case GST_VIDEO_ORIENTATION_90R:
+    case GST_VIDEO_ORIENTATION_90L:
+    case GST_VIDEO_ORIENTATION_UR_LL:
+    case GST_VIDEO_ORIENTATION_UL_LR:
+      *w_factor = (gdouble) GST_VIDEO_INFO_WIDTH (&postproc->sinkpad_info) /
+        (gdouble) GST_VIDEO_INFO_HEIGHT (&postproc->srcpad_info);
+      *h_factor = (gdouble) GST_VIDEO_INFO_HEIGHT (&postproc->sinkpad_info) /
+        (gdouble) GST_VIDEO_INFO_WIDTH (&postproc->srcpad_info);
+      break;
+    default:
+      *w_factor = (gdouble) GST_VIDEO_INFO_WIDTH (&postproc->sinkpad_info) /
+        (gdouble) GST_VIDEO_INFO_WIDTH (&postproc->srcpad_info);
+      *h_factor = (gdouble) GST_VIDEO_INFO_HEIGHT (&postproc->sinkpad_info) /
+        (gdouble) GST_VIDEO_INFO_HEIGHT (&postproc->srcpad_info);
+      break;
+  }
+}
+
 static gboolean
 gst_vaapipostproc_update_src_caps (GstVaapiPostproc * postproc, GstCaps * caps,
     gboolean * caps_changed_ptr)
 {
+  gdouble w_factor, h_factor;
+
   GST_INFO_OBJECT (postproc, "new src caps = %" GST_PTR_FORMAT, caps);
 
   if (!video_info_update (caps, &postproc->srcpad_info, caps_changed_ptr))
@@ -1103,10 +1128,8 @@ gst_vaapipostproc_update_src_caps (GstVaapiPostproc * postproc, GstCaps * caps,
       postproc->format != DEFAULT_FORMAT)
     postproc->flags |= GST_VAAPI_POSTPROC_FLAG_FORMAT;
 
-  if (GST_VIDEO_INFO_WIDTH (&postproc->srcpad_info) !=
-      GST_VIDEO_INFO_WIDTH (&postproc->sinkpad_info)
-      || GST_VIDEO_INFO_HEIGHT (&postproc->srcpad_info) !=
-      GST_VIDEO_INFO_HEIGHT (&postproc->sinkpad_info))
+  get_scale_factor (postproc, &w_factor, &h_factor);
+  if (w_factor != 1.0 || h_factor != 1.0)
     postproc->flags |= GST_VAAPI_POSTPROC_FLAG_SIZE;
 
   return TRUE;
