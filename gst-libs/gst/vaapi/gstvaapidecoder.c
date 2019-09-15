@@ -235,6 +235,7 @@ do_decode_1 (GstVaapiDecoder * decoder, GstVaapiParserFrame * frame)
 {
   GstVaapiDecoderClass *const klass = GST_VAAPI_DECODER_GET_CLASS (decoder);
   GstVaapiDecoderStatus status;
+  gboolean have_picture = FALSE;
 
   if (frame->pre_units->len > 0) {
     status = do_decode_units (decoder, frame->pre_units);
@@ -260,12 +261,21 @@ do_decode_1 (GstVaapiDecoder * decoder, GstVaapiParserFrame * frame)
       if (status != GST_VAAPI_DECODER_STATUS_SUCCESS)
         return status;
     }
+
+    have_picture = TRUE;
   }
 
   if (frame->post_units->len > 0) {
     status = do_decode_units (decoder, frame->post_units);
-    if (status != GST_VAAPI_DECODER_STATUS_SUCCESS)
-      return status;
+    if (status != GST_VAAPI_DECODER_STATUS_SUCCESS) {
+      if (have_picture) {
+        GST_INFO ("post units decode return error status: %d, but already"
+            " have decoded picture in DPB, continue to output this frame",
+            status);
+        status = GST_VAAPI_DECODER_STATUS_SUCCESS;
+      } else
+        return status;
+    }
   }
 
   /* Drop frame if there is no slice data unit in there */
