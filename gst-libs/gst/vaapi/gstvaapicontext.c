@@ -377,8 +377,10 @@ context_update_config_encoder (GstVaapiContext * context,
   return config_changed;
 }
 
+GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiContext, gst_vaapi_context);
+
 static inline void
-gst_vaapi_context_init (GstVaapiContext * context,
+gst_vaapi_context_initialize (GstVaapiContext * context,
     const GstVaapiContextInfo * new_cip)
 {
   GstVaapiContextInfo *const cip = &context->info;
@@ -398,9 +400,10 @@ gst_vaapi_context_finalize (GstVaapiContext * context)
 {
   context_destroy (context);
   context_destroy_surfaces (context);
-}
 
-GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiContext, gst_vaapi_context);
+  G_OBJECT_CLASS (gst_vaapi_context_parent_class)->finalize ((GObject *)
+      context);
+}
 
 /**
  * gst_vaapi_context_new:
@@ -422,11 +425,11 @@ gst_vaapi_context_new (GstVaapiDisplay * display,
   g_return_val_if_fail (cip->profile, NULL);
   g_return_val_if_fail (cip->entrypoint, NULL);
 
-  context = gst_vaapi_object_new (gst_vaapi_context_class (), display);
+  context = gst_vaapi_object_new (gst_vaapi_context_get_type (), display);
   if (!context)
     return NULL;
 
-  gst_vaapi_context_init (context, cip);
+  gst_vaapi_context_initialize (context, cip);
 
   if (!config_create (context))
     goto error;

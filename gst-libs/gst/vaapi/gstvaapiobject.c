@@ -36,29 +36,84 @@
 #define DEBUG 1
 #include "gstvaapidebug.h"
 
+enum
+{
+  PROP_DISPLAY = 1,
+  N_PROPERTIES
+};
+
+static GParamSpec *properties[N_PROPERTIES];
+
+G_DEFINE_ABSTRACT_TYPE (GstVaapiObject, gst_vaapi_object, GST_TYPE_OBJECT);
+
+static void
+gst_vaapi_object_init (GstVaapiObject * object)
+{
+  object->object_id = VA_INVALID_ID;
+}
+
+static void
+gst_vaapi_object_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec)
+{
+  GstVaapiObject *vaapi_object = GST_VAAPI_OBJECT (object);
+
+  switch (prop_id) {
+    case PROP_DISPLAY:
+      g_assert (vaapi_object->display == NULL);
+      vaapi_object->display = g_value_dup_object (value);
+      g_assert (vaapi_object->display != NULL);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
+gst_vaapi_object_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec)
+{
+  GstVaapiObject *vaapi_object = GST_VAAPI_OBJECT (object);
+
+  switch (prop_id) {
+    case PROP_DISPLAY:
+      g_value_set_object (value, vaapi_object->display);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
 static void
 gst_vaapi_object_finalize (GstVaapiObject * object)
 {
-  const GstVaapiObjectClass *const klass = GST_VAAPI_OBJECT_GET_CLASS (object);
-
-  if (klass->finalize)
-    klass->finalize (object);
   gst_vaapi_display_replace (&object->display, NULL);
+  G_OBJECT_CLASS (gst_vaapi_object_parent_class)->finalize ((GObject *) object);
 }
 
-void
-gst_vaapi_object_class_init (GstVaapiObjectClass * klass, guint size)
+static void
+gst_vaapi_object_class_init (GstVaapiObjectClass * klass)
 {
-  GstVaapiMiniObjectClass *const object_class =
-      GST_VAAPI_MINI_OBJECT_CLASS (klass);
+  GObjectClass *const object_class = G_OBJECT_CLASS (klass);
 
-  object_class->size = size;
-  object_class->finalize = (GDestroyNotify) gst_vaapi_object_finalize;
+  object_class->set_property = gst_vaapi_object_set_property;
+  object_class->get_property = gst_vaapi_object_get_property;
+  object_class->finalize =
+      (GstVaapiObjectFinalizeFunc) gst_vaapi_object_finalize;
+
+  properties[PROP_DISPLAY] =
+      g_param_spec_object ("display", "Gst VA-API Display",
+      "The VA-API display object to use", GST_TYPE_VAAPI_DISPLAY,
+      G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_NAME);
+
+  g_object_class_install_properties (object_class, N_PROPERTIES, properties);
 }
 
 /**
  * gst_vaapi_object_new:
- * @klass: The object class
+ * @type: The GType
  * @display: The #GstVaapiDisplay
  *
  * Creates a new #GstVaapiObject. The @klass argument shall not be
@@ -71,30 +126,13 @@ gst_vaapi_object_class_init (GstVaapiObjectClass * klass, guint size)
  * Returns: The newly allocated #GstVaapiObject
  */
 gpointer
-gst_vaapi_object_new (const GstVaapiObjectClass * klass,
-    GstVaapiDisplay * display)
+gst_vaapi_object_new (GType type, GstVaapiDisplay * display)
 {
-  const GstVaapiMiniObjectClass *const object_class =
-      GST_VAAPI_MINI_OBJECT_CLASS (klass);
   GstVaapiObject *object;
-  guint sub_size;
 
-  g_return_val_if_fail (klass != NULL, NULL);
   g_return_val_if_fail (display != NULL, NULL);
 
-  object = (GstVaapiObject *) gst_vaapi_mini_object_new (object_class);
-  if (!object)
-    return NULL;
-
-  object->display = gst_object_ref (display);
-  object->object_id = VA_INVALID_ID;
-
-  sub_size = object_class->size - sizeof (*object);
-  if (sub_size > 0)
-    memset (((guchar *) object) + sizeof (*object), 0, sub_size);
-
-  if (klass->init)
-    klass->init (object);
+  object = g_object_new (type, "display", display, NULL);
   return object;
 }
 
@@ -109,7 +147,7 @@ gst_vaapi_object_new (const GstVaapiObjectClass * klass,
 gpointer
 gst_vaapi_object_ref (gpointer object)
 {
-  return gst_vaapi_mini_object_ref (object);
+  return gst_object_ref (object);
 }
 
 /**
@@ -122,7 +160,7 @@ gst_vaapi_object_ref (gpointer object)
 void
 gst_vaapi_object_unref (gpointer object)
 {
-  gst_vaapi_mini_object_unref (object);
+  gst_object_unref (object);
 }
 
 /**
@@ -137,8 +175,7 @@ gst_vaapi_object_unref (gpointer object)
 void
 gst_vaapi_object_replace (gpointer old_object_ptr, gpointer new_object)
 {
-  gst_vaapi_mini_object_replace ((GstVaapiMiniObject **) old_object_ptr,
-      new_object);
+  gst_object_replace (old_object_ptr, new_object);
 }
 
 /**

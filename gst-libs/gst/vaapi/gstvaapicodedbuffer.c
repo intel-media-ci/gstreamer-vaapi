@@ -51,8 +51,10 @@ coded_buffer_create (GstVaapiCodedBuffer * buf, guint buf_size,
   return TRUE;
 }
 
+GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiCodedBuffer, gst_vaapi_coded_buffer);
+
 static void
-coded_buffer_destroy (GstVaapiCodedBuffer * buf)
+gst_vaapi_coded_buffer_finalize (GstVaapiCodedBuffer * buf)
 {
   GstVaapiDisplay *const display = GST_VAAPI_OBJECT_DISPLAY (buf);
   VABufferID buf_id;
@@ -66,6 +68,9 @@ coded_buffer_destroy (GstVaapiCodedBuffer * buf)
     GST_VAAPI_DISPLAY_UNLOCK (display);
     GST_VAAPI_OBJECT_ID (buf) = VA_INVALID_ID;
   }
+
+  G_OBJECT_CLASS (gst_vaapi_coded_buffer_parent_class)->finalize ((GObject *)
+      buf);
 }
 
 static gboolean
@@ -93,11 +98,6 @@ coded_buffer_unmap (GstVaapiCodedBuffer * buf)
   GST_VAAPI_OBJECT_UNLOCK_DISPLAY (buf);
 }
 
-/* *INDENT-OFF* */
-#define gst_vaapi_coded_buffer_finalize coded_buffer_destroy
-GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiCodedBuffer, gst_vaapi_coded_buffer)
-/* *INDENT-ON* */
-
 /*
  * gst_vaapi_coded_buffer_new:
  * @context: the parent #GstVaapiContext object
@@ -120,7 +120,7 @@ gst_vaapi_coded_buffer_new (GstVaapiContext * context, guint buf_size)
   display = GST_VAAPI_OBJECT_DISPLAY (context);
   g_return_val_if_fail (display != NULL, NULL);
 
-  buf = gst_vaapi_object_new (gst_vaapi_coded_buffer_class (), display);
+  buf = gst_vaapi_object_new (gst_vaapi_coded_buffer_get_type (), display);
   if (!buf)
     return NULL;
 

@@ -65,6 +65,8 @@ struct _GstVaapiSubpictureClass
   GstVaapiObjectClass parent_class;
 };
 
+GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiSubpicture, gst_vaapi_subpicture);
+
 static void
 gst_vaapi_subpicture_destroy (GstVaapiSubpicture * subpicture)
 {
@@ -91,6 +93,14 @@ gst_vaapi_subpicture_destroy (GstVaapiSubpicture * subpicture)
   gst_vaapi_object_replace (&subpicture->image, NULL);
 }
 
+static void
+gst_vaapi_subpicture_finalize (GstVaapiSubpicture * subpicture)
+{
+  gst_vaapi_subpicture_destroy (subpicture);
+  G_OBJECT_CLASS (gst_vaapi_subpicture_parent_class)->finalize ((GObject *)
+      subpicture);
+}
+
 static gboolean
 gst_vaapi_subpicture_create (GstVaapiSubpicture * subpicture,
     GstVaapiImage * image)
@@ -113,9 +123,6 @@ gst_vaapi_subpicture_create (GstVaapiSubpicture * subpicture,
   return TRUE;
 }
 
-#define gst_vaapi_subpicture_finalize gst_vaapi_subpicture_destroy
-GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiSubpicture, gst_vaapi_subpicture)
-
 /**
  * gst_vaapi_subpicture_new:
  * @image: a #GstVaapiImage
@@ -126,8 +133,8 @@ GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiSubpicture, gst_vaapi_subpicture)
  *
  * Return value: the newly allocated #GstVaapiSubpicture object
  */
-     GstVaapiSubpicture *gst_vaapi_subpicture_new (GstVaapiImage * image,
-    guint flags)
+GstVaapiSubpicture *
+gst_vaapi_subpicture_new (GstVaapiImage * image, guint flags)
 {
   GstVaapiSubpicture *subpicture;
   GstVaapiDisplay *display;
@@ -146,7 +153,7 @@ GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiSubpicture, gst_vaapi_subpicture)
   if (flags & ~va_flags)
     return NULL;
 
-  subpicture = gst_vaapi_object_new (gst_vaapi_subpicture_class (), display);
+  subpicture = gst_vaapi_object_new (gst_vaapi_subpicture_get_type (), display);
   if (!subpicture)
     return NULL;
 

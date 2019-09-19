@@ -113,8 +113,11 @@ vaapi_image_is_linear (const VAImage * va_image)
   return va_image->data_size == data_size;
 }
 
+GType gst_vaapi_image_get_type (void);
+G_DEFINE_TYPE (GstVaapiImage, gst_vaapi_image, GST_TYPE_VAAPI_OBJECT);
+
 static void
-gst_vaapi_image_destroy (GstVaapiImage * image)
+gst_vaapi_image_finalize (GstVaapiImage * image)
 {
   GstVaapiDisplay *const display = GST_VAAPI_OBJECT_DISPLAY (image);
   VAImageID image_id;
@@ -134,6 +137,8 @@ gst_vaapi_image_destroy (GstVaapiImage * image)
           GST_VAAPI_ID_ARGS (image_id));
     GST_VAAPI_OBJECT_ID (image) = VA_INVALID_ID;
   }
+
+  G_OBJECT_CLASS (gst_vaapi_image_parent_class)->finalize ((GObject *) image);
 }
 
 static gboolean
@@ -226,14 +231,11 @@ gst_vaapi_image_init (GstVaapiImage * image)
 static void
 gst_vaapi_image_class_init (GstVaapiImageClass * klass)
 {
-  GstVaapiObjectClass *const object_class = GST_VAAPI_OBJECT_CLASS (klass);
+  GObjectClass *const object_class = G_OBJECT_CLASS (klass);
 
-  object_class->init = (GstVaapiObjectInitFunc) gst_vaapi_image_init;
+  object_class->finalize =
+      (GstVaapiObjectFinalizeFunc) gst_vaapi_image_finalize;
 }
-
-#define gst_vaapi_image_finalize gst_vaapi_image_destroy
-GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiImage,
-    gst_vaapi_image, gst_vaapi_image_class_init (&g_class))
 
 /**
  * gst_vaapi_image_new:
@@ -247,7 +249,8 @@ GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiImage,
  *
  * Return value: the newly allocated #GstVaapiImage object
  */
-     GstVaapiImage *gst_vaapi_image_new (GstVaapiDisplay * display,
+GstVaapiImage *
+gst_vaapi_image_new (GstVaapiDisplay * display,
     GstVideoFormat format, guint width, guint height)
 {
   GstVaapiImage *image;
@@ -258,7 +261,7 @@ GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiImage,
   GST_DEBUG ("format %s, size %ux%u", gst_vaapi_video_format_to_string (format),
       width, height);
 
-  image = gst_vaapi_object_new (gst_vaapi_image_class (), display);
+  image = gst_vaapi_object_new (gst_vaapi_image_get_type (), display);
   if (!image)
     return NULL;
 
@@ -300,7 +303,7 @@ gst_vaapi_image_new_with_image (GstVaapiDisplay * display, VAImage * va_image)
       GST_FOURCC_ARGS (va_image->format.fourcc),
       va_image->width, va_image->height);
 
-  image = gst_vaapi_object_new (gst_vaapi_image_class (), display);
+  image = gst_vaapi_object_new (gst_vaapi_image_get_type (), display);
   if (!image)
     return NULL;
 

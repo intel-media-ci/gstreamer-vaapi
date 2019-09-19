@@ -30,10 +30,15 @@
 
 G_BEGIN_DECLS
 
+#define GST_TYPE_VAAPI_OBJECT \
+  (gst_vaapi_object_get_type ())
 #define GST_VAAPI_OBJECT(obj) \
-  ((GstVaapiObject *) (obj))
+  (G_TYPE_CHECK_INSTANCE_CAST ((obj), GST_TYPE_VAAPI_OBJECT, GstVaapiObject))
 
 typedef struct _GstVaapiObject GstVaapiObject;
+
+GType
+gst_vaapi_object_get_type (void) G_GNUC_CONST;
 
 gpointer
 gst_vaapi_object_ref (gpointer object);

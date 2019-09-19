@@ -32,37 +32,27 @@
 G_BEGIN_DECLS
 
 #define GST_VAAPI_OBJECT_CLASS(klass) \
-  ((GstVaapiObjectClass *) (klass))
+  (G_TYPE_CHECK_CLASS_CAST ((klass), GST_TYPE_VAAPI_OBJECT, GstVaapiObjectClass))
 #define GST_VAAPI_IS_OBJECT_CLASS(klass) \
-  ((klass) != NULL)
-#define GST_VAAPI_OBJECT_GET_CLASS(object) \
-  GST_VAAPI_OBJECT_CLASS (GST_VAAPI_MINI_OBJECT_GET_CLASS (object))
+  (G_TYPE_CHECK_CLASS_TYPE ((klass), GST_TYPE_VAAPI_OBJECT))
+#define GST_VAAPI_OBJECT_GET_CLASS(obj) \
+  (G_TYPE_INSTANCE_GET_CLASS ((obj), GST_TYPE_VAAPI_OBJECT, GstVaapiObjectClass))
 
 typedef struct _GstVaapiObjectClass GstVaapiObjectClass;
-typedef void (*GstVaapiObjectInitFunc) (GstVaapiObject * object);
-typedef void (*GstVaapiObjectFinalizeFunc) (GstVaapiObject * object);
 
-#define GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE(TN, t_n, code)  \
-static inline const GstVaapiObjectClass *                       \
-G_PASTE(t_n,_class) (void)                                      \
-{                                                               \
-    static G_PASTE(TN,Class) g_class;                           \
-    static gsize g_class_init = FALSE;                          \
-                                                                \
-    if (g_once_init_enter (&g_class_init)) {                    \
-        GstVaapiObjectClass * const klass =                     \
-            GST_VAAPI_OBJECT_CLASS (&g_class);                  \
-        gst_vaapi_object_class_init (klass, sizeof(TN));        \
-        code;                                                   \
-        klass->finalize = (GstVaapiObjectFinalizeFunc)          \
-            G_PASTE(t_n,_finalize);                             \
-        g_once_init_leave (&g_class_init, TRUE);                \
-    }                                                           \
-    return GST_VAAPI_OBJECT_CLASS (&g_class);                   \
-}
+typedef void (*GstVaapiObjectFinalizeFunc) (GObject * object);
 
-#define GST_VAAPI_OBJECT_DEFINE_CLASS(TN, t_n) \
-  GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (TN, t_n, /**/)
+#define GST_VAAPI_OBJECT_DEFINE_CLASS(TN, t_n)                  \
+  static void G_PASTE(t_n, _finalize) (TN * obj);               \
+  static void                                                   \
+  G_PASTE(t_n, _class_init) (G_PASTE(TN, Class) * klass) {      \
+    GObjectClass *const object_class = G_OBJECT_CLASS (klass);  \
+    object_class->finalize = (GstVaapiObjectFinalizeFunc)       \
+                             G_PASTE(t_n, _finalize);           \
+  }                                                             \
+  GType G_PASTE(t_n, _get_type) (void) G_GNUC_CONST;            \
+  static void G_PASTE(t_n, _init) (TN * obj) { }                \
+  G_DEFINE_TYPE (TN, t_n, GST_TYPE_VAAPI_OBJECT);
 
 /**
  * GST_VAAPI_OBJECT_ID:
@@ -166,7 +156,7 @@ G_PASTE(t_n,_class) (void)                                      \
 struct _GstVaapiObject
 {
   /*< private >*/
-  GstVaapiMiniObject parent_instance;
+  GstObject parent_instance;
 
   GstVaapiDisplay *display;
   GstVaapiID object_id;
@@ -180,18 +170,11 @@ struct _GstVaapiObject
 struct _GstVaapiObjectClass
 {
   /*< private >*/
-  GstVaapiMiniObjectClass parent_class;
-
-  GstVaapiObjectInitFunc init;
-  GstVaapiObjectFinalizeFunc finalize;
+  GstObjectClass parent_class;
 };
 
-void
-gst_vaapi_object_class_init (GstVaapiObjectClass * klass, guint size);
-
 gpointer
-gst_vaapi_object_new (const GstVaapiObjectClass * klass,
-    GstVaapiDisplay * display);
+gst_vaapi_object_new (GType type, GstVaapiDisplay * display);
 
 G_END_DECLS
 

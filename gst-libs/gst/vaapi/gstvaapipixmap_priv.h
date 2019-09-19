@@ -101,11 +101,11 @@ struct _GstVaapiPixmapClass {
 };
 
 GstVaapiPixmap *
-gst_vaapi_pixmap_new(const GstVaapiPixmapClass *pixmap_class,
+gst_vaapi_pixmap_new(GType type,
     GstVaapiDisplay *display, GstVideoFormat format, guint width, guint height);
 
 GstVaapiPixmap *
-gst_vaapi_pixmap_new_from_native(const GstVaapiPixmapClass *pixmap_class,
+gst_vaapi_pixmap_new_from_native(GType type,
     GstVaapiDisplay *display, gpointer native_pixmap);
 
 G_END_DECLS

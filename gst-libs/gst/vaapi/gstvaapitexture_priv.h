@@ -131,7 +131,7 @@ struct _GstVaapiTextureClass {
 };
 
 GstVaapiTexture *
-gst_vaapi_texture_new_internal (const GstVaapiTextureClass * klass,
+gst_vaapi_texture_new_internal (GType type,
     GstVaapiDisplay * display, GstVaapiID id, guint target, guint format,
     guint width, guint height);
 

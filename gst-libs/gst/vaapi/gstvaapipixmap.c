@@ -33,34 +33,29 @@
 #define DEBUG 1
 #include "gstvaapidebug.h"
 
-static inline GstVaapiPixmap *
-gst_vaapi_pixmap_new_internal (const GstVaapiPixmapClass * pixmap_class,
-    GstVaapiDisplay * display)
-{
-  g_assert (pixmap_class->create != NULL);
-  g_assert (pixmap_class->render != NULL);
-
-  return gst_vaapi_object_new (GST_VAAPI_OBJECT_CLASS (pixmap_class), display);
-}
-
 GstVaapiPixmap *
-gst_vaapi_pixmap_new (const GstVaapiPixmapClass * pixmap_class,
+gst_vaapi_pixmap_new (GType type,
     GstVaapiDisplay * display, GstVideoFormat format, guint width, guint height)
 {
   GstVaapiPixmap *pixmap;
+  GstVaapiPixmapClass *pixmap_class;
 
   g_return_val_if_fail (format != GST_VIDEO_FORMAT_UNKNOWN &&
       format != GST_VIDEO_FORMAT_ENCODED, NULL);
   g_return_val_if_fail (width > 0, NULL);
   g_return_val_if_fail (height > 0, NULL);
 
-  pixmap = gst_vaapi_pixmap_new_internal (pixmap_class, display);
+  pixmap = gst_vaapi_object_new (type, display);
   if (!pixmap)
     return NULL;
 
   pixmap->format = format;
   pixmap->width = width;
   pixmap->height = height;
+
+  pixmap_class = GST_VAAPI_PIXMAP_GET_CLASS (pixmap);
+  g_assert (pixmap_class->create != NULL);
+  g_assert (pixmap_class->render != NULL);
   if (!pixmap_class->create (pixmap))
     goto error;
   return pixmap;
@@ -74,17 +69,22 @@ error:
 }
 
 GstVaapiPixmap *
-gst_vaapi_pixmap_new_from_native (const GstVaapiPixmapClass * pixmap_class,
+gst_vaapi_pixmap_new_from_native (GType type,
     GstVaapiDisplay * display, gpointer native_pixmap)
 {
   GstVaapiPixmap *pixmap;
+  GstVaapiPixmapClass *pixmap_class;
 
-  pixmap = gst_vaapi_pixmap_new_internal (pixmap_class, display);
+  pixmap = gst_vaapi_object_new (type, display);
   if (!pixmap)
     return NULL;
 
   GST_VAAPI_OBJECT_ID (pixmap) = GPOINTER_TO_SIZE (native_pixmap);
   pixmap->use_foreign_pixmap = TRUE;
+
+  pixmap_class = GST_VAAPI_PIXMAP_GET_CLASS (pixmap);
+  g_assert (pixmap_class->create != NULL);
+  g_assert (pixmap_class->render != NULL);
   if (!pixmap_class->create (pixmap))
     goto error;
   return pixmap;

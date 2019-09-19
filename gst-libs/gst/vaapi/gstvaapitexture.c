@@ -57,7 +57,7 @@ gst_vaapi_texture_allocate (GstVaapiTexture * texture)
 }
 
 GstVaapiTexture *
-gst_vaapi_texture_new_internal (const GstVaapiTextureClass * klass,
+gst_vaapi_texture_new_internal (GType type,
     GstVaapiDisplay * display, GstVaapiID id, guint target, guint format,
     guint width, guint height)
 {
@@ -68,7 +68,7 @@ gst_vaapi_texture_new_internal (const GstVaapiTextureClass * klass,
   g_return_val_if_fail (width > 0, NULL);
   g_return_val_if_fail (height > 0, NULL);
 
-  texture = gst_vaapi_object_new (GST_VAAPI_OBJECT_CLASS (klass), display);
+  texture = gst_vaapi_object_new (type, display);
   if (!texture)
     return NULL;
 

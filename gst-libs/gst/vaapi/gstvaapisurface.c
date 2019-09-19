@@ -66,8 +66,10 @@ gst_vaapi_surface_destroy_subpictures (GstVaapiSurface * surface)
   }
 }
 
+GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiSurface, gst_vaapi_surface);
+
 static void
-gst_vaapi_surface_destroy (GstVaapiSurface * surface)
+gst_vaapi_surface_finalize (GstVaapiSurface * surface)
 {
   GstVaapiDisplay *const display = GST_VAAPI_OBJECT_DISPLAY (surface);
   VASurfaceID surface_id;
@@ -89,6 +91,9 @@ gst_vaapi_surface_destroy (GstVaapiSurface * surface)
     GST_VAAPI_OBJECT_ID (surface) = VA_INVALID_SURFACE;
   }
   gst_vaapi_buffer_proxy_replace (&surface->extbuf_proxy, NULL);
+
+  G_OBJECT_CLASS (gst_vaapi_surface_parent_class)->finalize ((GObject *)
+      surface);
 }
 
 static gboolean
@@ -303,9 +308,6 @@ error_unsupported_format:
   return FALSE;
 }
 
-#define gst_vaapi_surface_finalize gst_vaapi_surface_destroy
-GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiSurface, gst_vaapi_surface);
-
 /**
  * gst_vaapi_surface_new_from_formats:
  * @display: a #GstVaapiDisplay
@@ -337,7 +339,7 @@ gst_vaapi_surface_new_from_formats (GstVaapiDisplay * display,
 
   /* Fallback: if there's no format valid for the chroma type let's
    * just use the passed chroma */
-  surface = gst_vaapi_object_new (gst_vaapi_surface_class (), display);
+  surface = gst_vaapi_object_new (gst_vaapi_surface_get_type (), display);
   if (!surface)
     return NULL;
   if (!gst_vaapi_surface_create (surface, chroma_type, width, height))
@@ -373,7 +375,7 @@ gst_vaapi_surface_new (GstVaapiDisplay * display,
 
   GST_DEBUG ("size %ux%u, chroma type 0x%x", width, height, chroma_type);
 
-  surface = gst_vaapi_object_new (gst_vaapi_surface_class (), display);
+  surface = gst_vaapi_object_new (gst_vaapi_surface_get_type (), display);
   if (!surface)
     return NULL;
 
@@ -424,7 +426,7 @@ gst_vaapi_surface_new_full (GstVaapiDisplay * display,
       GST_VIDEO_INFO_HEIGHT (vip),
       gst_vaapi_video_format_to_string (GST_VIDEO_INFO_FORMAT (vip)), flags);
 
-  surface = gst_vaapi_object_new (gst_vaapi_surface_class (), display);
+  surface = gst_vaapi_object_new (gst_vaapi_surface_get_type (), display);
   if (!surface)
     return NULL;
 
@@ -490,7 +492,7 @@ gst_vaapi_surface_new_from_buffer_proxy (GstVaapiDisplay * display,
   g_return_val_if_fail (proxy != NULL, NULL);
   g_return_val_if_fail (info != NULL, NULL);
 
-  surface = gst_vaapi_object_new (gst_vaapi_surface_class (), display);
+  surface = gst_vaapi_object_new (gst_vaapi_surface_get_type (), display);
   if (!surface)
     return NULL;
 

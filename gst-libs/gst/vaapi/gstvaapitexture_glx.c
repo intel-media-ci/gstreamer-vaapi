@@ -117,12 +117,26 @@ destroy_texture_unlocked (GstVaapiTexture * texture)
   }
 }
 
+GType gst_vaapi_texture_glx_get_type (void);
+G_DEFINE_TYPE (GstVaapiTextureGLX, gst_vaapi_texture_glx,
+    GST_TYPE_VAAPI_OBJECT);
+
 static void
-gst_vaapi_texture_glx_destroy (GstVaapiTexture * texture)
+gst_vaapi_texture_glx_init (GstVaapiTextureGLX * object)
 {
+}
+
+static void
+gst_vaapi_texture_glx_finalize (GstVaapiTextureGLX * texture_glx)
+{
+  GstVaapiTexture *texture = GST_VAAPI_TEXTURE (texture_glx);
+
   GST_VAAPI_OBJECT_LOCK_DISPLAY (texture);
   destroy_texture_unlocked (texture);
   GST_VAAPI_OBJECT_UNLOCK_DISPLAY (texture);
+
+  G_OBJECT_CLASS (gst_vaapi_texture_glx_parent_class)->finalize ((GObject *)
+      texture);
 }
 
 static gboolean
@@ -191,19 +205,15 @@ gst_vaapi_texture_glx_create (GstVaapiTexture * texture)
 static void
 gst_vaapi_texture_glx_class_init (GstVaapiTextureGLXClass * klass)
 {
-  GstVaapiObjectClass *const object_class = GST_VAAPI_OBJECT_CLASS (klass);
+  GObjectClass *const object_class = G_OBJECT_CLASS (klass);
   GstVaapiTextureClass *const texture_class = GST_VAAPI_TEXTURE_CLASS (klass);
 
   object_class->finalize = (GstVaapiObjectFinalizeFunc)
-      gst_vaapi_texture_glx_destroy;
+      gst_vaapi_texture_glx_finalize;
 
   texture_class->allocate = gst_vaapi_texture_glx_create;
   texture_class->put_surface = gst_vaapi_texture_glx_put_surface;
 }
-
-#define gst_vaapi_texture_glx_finalize gst_vaapi_texture_glx_destroy
-GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiTextureGLX,
-    gst_vaapi_texture_glx, gst_vaapi_texture_glx_class_init (&g_class));
 
 /**
  * gst_vaapi_texture_glx_new:
@@ -230,9 +240,8 @@ gst_vaapi_texture_glx_new (GstVaapiDisplay * display, guint target,
 {
   g_return_val_if_fail (GST_VAAPI_IS_DISPLAY_GLX (display), NULL);
 
-  return gst_vaapi_texture_new_internal (GST_VAAPI_TEXTURE_CLASS
-      (gst_vaapi_texture_glx_class ()), display, GST_VAAPI_ID_INVALID, target,
-      format, width, height);
+  return gst_vaapi_texture_new_internal (gst_vaapi_texture_glx_get_type (),
+      display, GST_VAAPI_ID_INVALID, target, format, width, height);
 }
 
 /* Can we assume that the vsink/app context API won't change ever? */
@@ -311,9 +320,8 @@ gst_vaapi_texture_glx_new_wrapped (GstVaapiDisplay * display,
   g_return_val_if_fail (width > 0, NULL);
   g_return_val_if_fail (height > 0, NULL);
 
-  return gst_vaapi_texture_new_internal (GST_VAAPI_TEXTURE_CLASS
-      (gst_vaapi_texture_glx_class ()), display, texture_id, target, format,
-      width, height);
+  return gst_vaapi_texture_new_internal (gst_vaapi_texture_glx_get_type (),
+      display, texture_id, target, format, width, height);
 }
 
 /**
