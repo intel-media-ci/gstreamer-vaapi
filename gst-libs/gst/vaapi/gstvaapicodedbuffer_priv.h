@@ -33,8 +33,6 @@ G_BEGIN_DECLS
 #define GST_VAAPI_CODED_BUFFER_CAST(obj) \
     ((GstVaapiCodedBuffer *)(obj))
 
-typedef struct _GstVaapiCodedBufferClass        GstVaapiCodedBufferClass;
-
 /**
  * GstVaapiCodedBuffer:
  *
@@ -42,22 +40,13 @@ typedef struct _GstVaapiCodedBufferClass        GstVaapiCodedBufferClass;
  */
 struct _GstVaapiCodedBuffer
 {
-  /*< private >*/
-  GstVaapiObject parent_instance;
+  /*< common header >*/
+  GstMiniObject mini_object;
+  GstVaapiDisplay *display;
+  GstVaapiID object_id;
 
   GstVaapiContext      *context;
   VACodedBufferSegment *segment_list;
-};
-
-/**
- * GstVaapiCodedBufferClass:
- *
- * A VA coded buffer object wrapper class.
- */
-struct _GstVaapiCodedBufferClass
-{
-  /*< private >*/
-  GstVaapiObjectClass parent_class;
 };
 
 G_GNUC_INTERNAL

@@ -31,39 +31,6 @@
 
 G_BEGIN_DECLS
 
-#define GST_VAAPI_OBJECT_CLASS(klass) \
-  ((GstVaapiObjectClass *) (klass))
-#define GST_VAAPI_IS_OBJECT_CLASS(klass) \
-  ((klass) != NULL)
-#define GST_VAAPI_OBJECT_GET_CLASS(object) \
-  GST_VAAPI_OBJECT_CLASS (GST_VAAPI_MINI_OBJECT_GET_CLASS (object))
-
-typedef struct _GstVaapiObjectClass GstVaapiObjectClass;
-typedef void (*GstVaapiObjectInitFunc) (GstVaapiObject * object);
-typedef void (*GstVaapiObjectFinalizeFunc) (GstVaapiObject * object);
-
-#define GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE(TN, t_n, code)  \
-static inline const GstVaapiObjectClass *                       \
-G_PASTE(t_n,_class) (void)                                      \
-{                                                               \
-    static G_PASTE(TN,Class) g_class;                           \
-    static gsize g_class_init = FALSE;                          \
-                                                                \
-    if (g_once_init_enter (&g_class_init)) {                    \
-        GstVaapiObjectClass * const klass =                     \
-            GST_VAAPI_OBJECT_CLASS (&g_class);                  \
-        gst_vaapi_object_class_init (klass, sizeof(TN));        \
-        code;                                                   \
-        klass->finalize = (GstVaapiObjectFinalizeFunc)          \
-            G_PASTE(t_n,_finalize);                             \
-        g_once_init_leave (&g_class_init, TRUE);                \
-    }                                                           \
-    return GST_VAAPI_OBJECT_CLASS (&g_class);                   \
-}
-
-#define GST_VAAPI_OBJECT_DEFINE_CLASS(TN, t_n) \
-  GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (TN, t_n, /**/)
-
 /**
  * GST_VAAPI_OBJECT_ID:
  * @object: a #GstVaapiObject
@@ -157,41 +124,6 @@ G_PASTE(t_n,_class) (void)                                      \
  */
 #define GST_VAAPI_OBJECT_UNLOCK_DISPLAY(object) \
   GST_VAAPI_DISPLAY_UNLOCK (GST_VAAPI_OBJECT_DISPLAY (object))
-
-/**
- * GstVaapiObject:
- *
- * VA object base.
- */
-struct _GstVaapiObject
-{
-  /*< private >*/
-  GstVaapiMiniObject parent_instance;
-
-  GstVaapiDisplay *display;
-  GstVaapiID object_id;
-};
-
-/**
- * GstVaapiObjectClass:
- *
- * VA object base class.
- */
-struct _GstVaapiObjectClass
-{
-  /*< private >*/
-  GstVaapiMiniObjectClass parent_class;
-
-  GstVaapiObjectInitFunc init;
-  GstVaapiObjectFinalizeFunc finalize;
-};
-
-void
-gst_vaapi_object_class_init (GstVaapiObjectClass * klass, guint size);
-
-gpointer
-gst_vaapi_object_new (const GstVaapiObjectClass * klass,
-    GstVaapiDisplay * display);
 
 G_END_DECLS
 

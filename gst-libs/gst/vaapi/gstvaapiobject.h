@@ -35,27 +35,44 @@ G_BEGIN_DECLS
 
 typedef struct _GstVaapiObject GstVaapiObject;
 
-gpointer
-gst_vaapi_object_ref (gpointer object);
+/**
+ * GstVaapiObject:
+ *
+ * All VA object common header.
+ */
+struct _GstVaapiObject
+{
+  GstMiniObject mini_object;
+  GstVaapiDisplay *display;
+  GstVaapiID object_id;
+};
 
-void
-gst_vaapi_object_unref (gpointer object);
+static inline gpointer
+gst_vaapi_object_ref (gpointer object)
+{
+  return gst_mini_object_ref ((GstMiniObject *) object);
+}
 
-void
-gst_vaapi_object_replace (gpointer old_object_ptr, gpointer new_object);
+static inline void
+gst_vaapi_object_unref (gpointer object)
+{
+  gst_mini_object_unref ((GstMiniObject *) object);
+}
 
-GstVaapiDisplay *
-gst_vaapi_object_get_display (GstVaapiObject * object);
+static inline void
+gst_vaapi_object_replace (gpointer old_object_ptr, gpointer new_object)
+{
+  gst_mini_object_replace ((GstMiniObject **) old_object_ptr,
+      (GstMiniObject *) new_object);
+}
 
-void
-gst_vaapi_object_lock_display (GstVaapiObject * object);
-
-void
-gst_vaapi_object_unlock_display (GstVaapiObject * object);
-
-GstVaapiID
-gst_vaapi_object_get_id (GstVaapiObject * object);
+static inline GstVaapiDisplay *
+gst_vaapi_object_get_display (GstVaapiObject * object)
+{
+  if (object)
+    return object->display;
+  return NULL;
+}
 
 G_END_DECLS
-
 #endif /* GST_VAAPI_OBJECT_H */

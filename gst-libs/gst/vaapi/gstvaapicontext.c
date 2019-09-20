@@ -394,13 +394,17 @@ gst_vaapi_context_init (GstVaapiContext * context,
 }
 
 static void
-gst_vaapi_context_finalize (GstVaapiContext * context)
+gst_vaapi_context_free (GstVaapiContext * context)
 {
   context_destroy (context);
   context_destroy_surfaces (context);
+  gst_vaapi_display_replace (&context->display, NULL);
+
+  g_slice_free1 (sizeof (GstVaapiContext), context);
 }
 
-GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiContext, gst_vaapi_context);
+GType gst_vaapi_context_get_type (void);
+GST_DEFINE_MINI_OBJECT_TYPE (GstVaapiContext, gst_vaapi_context);
 
 /**
  * gst_vaapi_context_new:
@@ -421,10 +425,18 @@ gst_vaapi_context_new (GstVaapiDisplay * display,
 
   g_return_val_if_fail (cip->profile, NULL);
   g_return_val_if_fail (cip->entrypoint, NULL);
+  g_return_val_if_fail (display != NULL, NULL);
 
-  context = gst_vaapi_object_new (gst_vaapi_context_class (), display);
+  context = g_slice_new0 (GstVaapiContext);
   if (!context)
     return NULL;
+
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (context), 0,
+      gst_vaapi_context_get_type (), NULL, NULL,
+      (GstMiniObjectFreeFunction) gst_vaapi_context_free);
+
+  context->display = gst_object_ref (display);
+  context->object_id = VA_INVALID_ID;
 
   gst_vaapi_context_init (context, cip);
 

@@ -33,35 +33,28 @@
 #define DEBUG 1
 #include "gstvaapidebug.h"
 
-static inline GstVaapiPixmap *
-gst_vaapi_pixmap_new_internal (const GstVaapiPixmapClass * pixmap_class,
-    GstVaapiDisplay * display)
-{
-  g_assert (pixmap_class->create != NULL);
-  g_assert (pixmap_class->render != NULL);
-
-  return gst_vaapi_object_new (GST_VAAPI_OBJECT_CLASS (pixmap_class), display);
-}
-
 GstVaapiPixmap *
-gst_vaapi_pixmap_new (const GstVaapiPixmapClass * pixmap_class,
+gst_vaapi_pixmap_init (GstVaapiPixmap * pixmap,
+    GstVaapiPixmapCreateFunc create,
+    GstVaapiPixmapRenderFunc render,
     GstVaapiDisplay * display, GstVideoFormat format, guint width, guint height)
 {
-  GstVaapiPixmap *pixmap;
-
   g_return_val_if_fail (format != GST_VIDEO_FORMAT_UNKNOWN &&
       format != GST_VIDEO_FORMAT_ENCODED, NULL);
   g_return_val_if_fail (width > 0, NULL);
   g_return_val_if_fail (height > 0, NULL);
+  g_return_val_if_fail (pixmap != NULL, NULL);
+  g_return_val_if_fail (pixmap->create != NULL, NULL);
+  g_return_val_if_fail (pixmap->render != NULL, NULL);
 
-  pixmap = gst_vaapi_pixmap_new_internal (pixmap_class, display);
-  if (!pixmap)
-    return NULL;
-
+  pixmap->display = gst_object_ref (display);
+  pixmap->object_id = VA_INVALID_ID;
+  pixmap->create = create;
+  pixmap->render = render;
   pixmap->format = format;
   pixmap->width = width;
   pixmap->height = height;
-  if (!pixmap_class->create (pixmap))
+  if (!pixmap->create (pixmap))
     goto error;
   return pixmap;
 
@@ -74,18 +67,22 @@ error:
 }
 
 GstVaapiPixmap *
-gst_vaapi_pixmap_new_from_native (const GstVaapiPixmapClass * pixmap_class,
+gst_vaapi_pixmap_init_from_native (GstVaapiPixmap * pixmap,
+    GstVaapiPixmapCreateFunc create,
+    GstVaapiPixmapRenderFunc render,
     GstVaapiDisplay * display, gpointer native_pixmap)
 {
-  GstVaapiPixmap *pixmap;
+  g_return_val_if_fail (pixmap != NULL, NULL);
+  g_return_val_if_fail (pixmap->create != NULL, NULL);
+  g_return_val_if_fail (pixmap->render != NULL, NULL);
 
-  pixmap = gst_vaapi_pixmap_new_internal (pixmap_class, display);
-  if (!pixmap)
-    return NULL;
-
+  pixmap->display = gst_object_ref (display);
+  pixmap->object_id = VA_INVALID_ID;
+  pixmap->create = create;
+  pixmap->render = render;
   GST_VAAPI_OBJECT_ID (pixmap) = GPOINTER_TO_SIZE (native_pixmap);
   pixmap->use_foreign_pixmap = TRUE;
-  if (!pixmap_class->create (pixmap))
+  if (!pixmap->create (pixmap))
     goto error;
   return pixmap;
 
@@ -258,6 +255,5 @@ gst_vaapi_pixmap_put_surface (GstVaapiPixmap * pixmap,
     src_rect.height = GST_VAAPI_SURFACE_HEIGHT (surface);
     crop_rect = &src_rect;
   }
-  return GST_VAAPI_PIXMAP_GET_CLASS (pixmap)->render (pixmap, surface,
-      crop_rect, flags);
+  return pixmap->render (pixmap, surface, crop_rect, flags);
 }

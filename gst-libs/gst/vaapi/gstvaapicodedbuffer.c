@@ -52,7 +52,7 @@ coded_buffer_create (GstVaapiCodedBuffer * buf, guint buf_size,
 }
 
 static void
-coded_buffer_destroy (GstVaapiCodedBuffer * buf)
+coded_buffer_free (GstVaapiCodedBuffer * buf)
 {
   GstVaapiDisplay *const display = GST_VAAPI_OBJECT_DISPLAY (buf);
   VABufferID buf_id;
@@ -66,6 +66,10 @@ coded_buffer_destroy (GstVaapiCodedBuffer * buf)
     GST_VAAPI_DISPLAY_UNLOCK (display);
     GST_VAAPI_OBJECT_ID (buf) = VA_INVALID_ID;
   }
+
+  gst_vaapi_display_replace (&buf->display, NULL);
+
+  g_slice_free1 (sizeof (GstVaapiCodedBuffer), buf);
 }
 
 static gboolean
@@ -93,10 +97,8 @@ coded_buffer_unmap (GstVaapiCodedBuffer * buf)
   GST_VAAPI_OBJECT_UNLOCK_DISPLAY (buf);
 }
 
-/* *INDENT-OFF* */
-#define gst_vaapi_coded_buffer_finalize coded_buffer_destroy
-GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiCodedBuffer, gst_vaapi_coded_buffer)
-/* *INDENT-ON* */
+GType gst_vaapi_coded_buffer_get_type (void);
+GST_DEFINE_MINI_OBJECT_TYPE (GstVaapiCodedBuffer, gst_vaapi_coded_buffer);
 
 /*
  * gst_vaapi_coded_buffer_new:
@@ -120,9 +122,16 @@ gst_vaapi_coded_buffer_new (GstVaapiContext * context, guint buf_size)
   display = GST_VAAPI_OBJECT_DISPLAY (context);
   g_return_val_if_fail (display != NULL, NULL);
 
-  buf = gst_vaapi_object_new (gst_vaapi_coded_buffer_class (), display);
+  buf = g_slice_new0 (GstVaapiCodedBuffer);
   if (!buf)
     return NULL;
+
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (buf), 0,
+      gst_vaapi_coded_buffer_get_type (), NULL, NULL,
+      (GstMiniObjectFreeFunction) coded_buffer_free);
+
+  buf->display = gst_object_ref (display);
+  buf->object_id = VA_INVALID_ID;
 
   if (!coded_buffer_create (buf, buf_size, context))
     goto error;

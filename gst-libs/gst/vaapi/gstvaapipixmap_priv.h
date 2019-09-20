@@ -27,12 +27,6 @@
 
 G_BEGIN_DECLS
 
-#define GST_VAAPI_PIXMAP_CLASS(klass) \
-    ((GstVaapiPixmapClass *)(klass))
-
-#define GST_VAAPI_PIXMAP_GET_CLASS(obj) \
-    GST_VAAPI_PIXMAP_CLASS(GST_VAAPI_OBJECT_GET_CLASS(obj))
-
 /**
  * GST_VAAPI_PIXMAP_FORMAT:
  * @pixmap: a #GstVaapiPixmap
@@ -70,43 +64,39 @@ typedef gboolean  (*GstVaapiPixmapRenderFunc)  (GstVaapiPixmap *pixmap,
 
 /**
  * GstVaapiPixmap:
+ * @create: virtual function to create a pixmap with width and height
+ * @render: virtual function to render a #GstVaapiSurface into a pixmap
  *
  * Base class for system-dependent pixmaps.
  */
 struct _GstVaapiPixmap {
-    /*< private >*/
-    GstVaapiObject parent_instance;
+    /*< common header >*/
+    GstMiniObject mini_object;
+    GstVaapiDisplay *display;
+    GstVaapiID object_id;
 
     /*< protected >*/
+    GstVaapiPixmapCreateFunc    create;
+    GstVaapiPixmapRenderFunc    render;
     GstVideoFormat      format;
     guint               width;
     guint               height;
     guint               use_foreign_pixmap      : 1;
 };
 
-/**
- * GstVaapiPixmapClass:
- * @create: virtual function to create a pixmap with width and height
- * @render: virtual function to render a #GstVaapiSurface into a pixmap
- *
- * Base class for system-dependent pixmaps.
- */
-struct _GstVaapiPixmapClass {
-    /*< private >*/
-    GstVaapiObjectClass parent_class;
-
-    /*< protected >*/
-    GstVaapiPixmapCreateFunc    create;
-    GstVaapiPixmapRenderFunc    render;
-};
-
+G_GNUC_INTERNAL
 GstVaapiPixmap *
-gst_vaapi_pixmap_new(const GstVaapiPixmapClass *pixmap_class,
-    GstVaapiDisplay *display, GstVideoFormat format, guint width, guint height);
+gst_vaapi_pixmap_init (GstVaapiPixmap * pixmap,
+    GstVaapiPixmapCreateFunc create,
+    GstVaapiPixmapRenderFunc render,
+    GstVaapiDisplay * display, GstVideoFormat format, guint width, guint height);
 
+G_GNUC_INTERNAL
 GstVaapiPixmap *
-gst_vaapi_pixmap_new_from_native(const GstVaapiPixmapClass *pixmap_class,
-    GstVaapiDisplay *display, gpointer native_pixmap);
+gst_vaapi_pixmap_init_from_native (GstVaapiPixmap * pixmap,
+    GstVaapiPixmapCreateFunc create,
+    GstVaapiPixmapRenderFunc render,
+    GstVaapiDisplay * display, gpointer native_pixmap);
 
 G_END_DECLS
 

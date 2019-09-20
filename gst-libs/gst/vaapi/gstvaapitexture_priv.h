@@ -29,12 +29,6 @@
 
 G_BEGIN_DECLS
 
-#define GST_VAAPI_TEXTURE_CLASS(klass) \
-  ((GstVaapiTextureClass *)(klass))
-
-#define GST_VAAPI_TEXTURE_GET_CLASS(obj) \
-  GST_VAAPI_TEXTURE_CLASS (GST_VAAPI_OBJECT_GET_CLASS (obj))
-
 /**
  * GST_VAAPI_TEXTURE_ID:
  * @texture: a #GstVaapiTexture
@@ -96,18 +90,20 @@ typedef gboolean (*GstVaapiTexturePutSurfaceFunc) (GstVaapiTexture * texture,
     GstVaapiSurface * surface, const GstVaapiRectangle * crop_rect,
     guint flags);
 
-typedef struct _GstVaapiTextureClass GstVaapiTextureClass;
-
 /**
  * GstVaapiTexture:
  *
  * Base class for API-dependent textures.
  */
 struct _GstVaapiTexture {
-  /*< private >*/
-  GstVaapiObject parent_instance;
+  /*< common header >*/
+  GstMiniObject mini_object;
+  GstVaapiDisplay *display;
+  GstVaapiID object_id;
 
   /*< protected >*/
+  GstVaapiTextureAllocateFunc allocate;
+  GstVaapiTexturePutSurfaceFunc put_surface;
   guint gl_target;
   guint gl_format;
   guint width;
@@ -115,23 +111,10 @@ struct _GstVaapiTexture {
   guint is_wrapped:1;
 };
 
-/**
- * GstVaapiTextureClass:
- * @put_surface: virtual function to render a #GstVaapiSurface into a texture
- *
- * Base class for API-dependent textures.
- */
-struct _GstVaapiTextureClass {
-  /*< private >*/
-  GstVaapiObjectClass parent_class;
-
-  /*< protected >*/
-  GstVaapiTextureAllocateFunc allocate;
-  GstVaapiTexturePutSurfaceFunc put_surface;
-};
-
 GstVaapiTexture *
-gst_vaapi_texture_new_internal (const GstVaapiTextureClass * klass,
+gst_vaapi_texture_init_internal (GstVaapiTexture * texture,
+    GstVaapiTextureAllocateFunc allocate,
+    GstVaapiTexturePutSurfaceFunc put_surface,
     GstVaapiDisplay * display, GstVaapiID id, guint target, guint format,
     guint width, guint height);
 

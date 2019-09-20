@@ -30,7 +30,6 @@
 
 G_BEGIN_DECLS
 
-typedef struct _GstVaapiImageClass              GstVaapiImageClass;
 typedef struct _GstVaapiImageRaw                GstVaapiImageRaw;
 
 /**
@@ -39,8 +38,10 @@ typedef struct _GstVaapiImageRaw                GstVaapiImageRaw;
  * A VA image wrapper
  */
 struct _GstVaapiImage {
-    /*< private >*/
-    GstVaapiObject      parent_instance;
+    /*< common header >*/
+    GstMiniObject mini_object;
+    GstVaapiDisplay *display;
+    GstVaapiID object_id;
 
     VAImage             internal_image;
     VAImage             image;
@@ -50,16 +51,6 @@ struct _GstVaapiImage {
     guint               width;
     guint               height;
     guint               is_linear       : 1;
-};
-
-/**
- * GstVaapiImageClass:
- *
- * A VA image wrapper class
- */
-struct _GstVaapiImageClass {
-    /*< private >*/
-    GstVaapiObjectClass parent_class;
 };
 
 /**

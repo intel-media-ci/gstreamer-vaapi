@@ -53,25 +53,26 @@ gst_vaapi_texture_init (GstVaapiTexture * texture, GstVaapiID id,
 static inline gboolean
 gst_vaapi_texture_allocate (GstVaapiTexture * texture)
 {
-  return GST_VAAPI_TEXTURE_GET_CLASS (texture)->allocate (texture);
+  return texture->allocate (texture);
 }
 
 GstVaapiTexture *
-gst_vaapi_texture_new_internal (const GstVaapiTextureClass * klass,
+gst_vaapi_texture_init_internal (GstVaapiTexture * texture,
+    GstVaapiTextureAllocateFunc allocate,
+    GstVaapiTexturePutSurfaceFunc put_surface,
     GstVaapiDisplay * display, GstVaapiID id, guint target, guint format,
     guint width, guint height)
 {
-  GstVaapiTexture *texture;
-
   g_return_val_if_fail (target != 0, NULL);
   g_return_val_if_fail (format != 0, NULL);
   g_return_val_if_fail (width > 0, NULL);
   g_return_val_if_fail (height > 0, NULL);
+  g_return_val_if_fail (allocate, NULL);
+  g_return_val_if_fail (put_surface, NULL);
 
-  texture = gst_vaapi_object_new (GST_VAAPI_OBJECT_CLASS (klass), display);
-  if (!texture)
-    return NULL;
-
+  texture->display = gst_object_ref (display);
+  texture->allocate = allocate;
+  texture->put_surface = put_surface;
   gst_vaapi_texture_init (texture, id, target, format, width, height);
   if (!gst_vaapi_texture_allocate (texture))
     goto error;
@@ -353,15 +354,10 @@ gboolean
 gst_vaapi_texture_put_surface (GstVaapiTexture * texture,
     GstVaapiSurface * surface, const GstVaapiRectangle * crop_rect, guint flags)
 {
-  const GstVaapiTextureClass *klass;
   GstVaapiRectangle rect;
 
   g_return_val_if_fail (texture != NULL, FALSE);
   g_return_val_if_fail (surface != NULL, FALSE);
-
-  klass = GST_VAAPI_TEXTURE_GET_CLASS (texture);
-  if (!klass)
-    return FALSE;
 
   if (!crop_rect) {
     rect.x = 0;
@@ -369,5 +365,5 @@ gst_vaapi_texture_put_surface (GstVaapiTexture * texture,
     gst_vaapi_surface_get_size (surface, &rect.width, &rect.height);
     crop_rect = &rect;
   }
-  return klass->put_surface (texture, surface, crop_rect, flags);
+  return texture->put_surface (texture, surface, crop_rect, flags);
 }

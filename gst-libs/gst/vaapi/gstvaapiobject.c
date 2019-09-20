@@ -26,6 +26,7 @@
  * SECTION:gstvaapiobject
  * @short_description: Base VA object
  */
+#if 0
 
 #include "sysdeps.h"
 #include "gstvaapiobject.h"
@@ -204,3 +205,4 @@ gst_vaapi_object_get_id (GstVaapiObject * object)
 
   return GST_VAAPI_OBJECT_ID (object);
 }
+#endif

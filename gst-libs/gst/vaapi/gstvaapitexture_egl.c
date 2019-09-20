@@ -44,7 +44,6 @@
   ((GstVaapiTextureEGL *) (texture))
 
 typedef struct _GstVaapiTextureEGL GstVaapiTextureEGL;
-typedef struct _GstVaapiTextureEGLClass GstVaapiTextureEGLClass;
 
 /**
  * GstVaapiTextureEGL:
@@ -60,17 +59,6 @@ struct _GstVaapiTextureEGL
   EGLImageKHR egl_image;
   GstVaapiSurface *surface;
   GstVaapiFilter *filter;
-};
-
-/**
- * GstVaapiTextureEGLClass:
- *
- * Base class for EGL texture wrapper.
- */
-struct _GstVaapiTextureEGLClass
-{
-  /*< private > */
-  GstVaapiTextureClass parent_class;
 };
 
 typedef struct
@@ -268,10 +256,13 @@ gst_vaapi_texture_egl_create (GstVaapiTextureEGL * texture)
 }
 
 static void
-gst_vaapi_texture_egl_destroy (GstVaapiTextureEGL * texture)
+gst_vaapi_texture_egl_free (GstVaapiTextureEGL * texture)
 {
   egl_context_run (texture->egl_context,
       (EglContextRunFunc) do_destroy_texture, texture);
+
+  gst_vaapi_display_replace (&texture->parent_instance.display, NULL);
+  g_slice_free1 (sizeof (GstVaapiTextureEGL), texture);
 }
 
 static gboolean
@@ -284,23 +275,8 @@ gst_vaapi_texture_egl_put_surface (GstVaapiTextureEGL * texture,
       (EglContextRunFunc) do_upload_surface, &args) && args.success;
 }
 
-static void
-gst_vaapi_texture_egl_class_init (GstVaapiTextureEGLClass * klass)
-{
-  GstVaapiObjectClass *const object_class = GST_VAAPI_OBJECT_CLASS (klass);
-  GstVaapiTextureClass *const texture_class = GST_VAAPI_TEXTURE_CLASS (klass);
-
-  object_class->finalize = (GstVaapiObjectFinalizeFunc)
-      gst_vaapi_texture_egl_destroy;
-  texture_class->allocate = (GstVaapiTextureAllocateFunc)
-      gst_vaapi_texture_egl_create;
-  texture_class->put_surface = (GstVaapiTexturePutSurfaceFunc)
-      gst_vaapi_texture_egl_put_surface;
-}
-
-#define gst_vaapi_texture_egl_finalize gst_vaapi_texture_egl_destroy
-GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiTextureEGL,
-    gst_vaapi_texture_egl, gst_vaapi_texture_egl_class_init (&g_class));
+GType gst_vaapi_texture_egl_get_type (void);
+GST_DEFINE_MINI_OBJECT_TYPE (GstVaapiTextureEGL, gst_vaapi_texture_egl);
 
 /**
  * gst_vaapi_texture_egl_new:
@@ -325,11 +301,22 @@ GstVaapiTexture *
 gst_vaapi_texture_egl_new (GstVaapiDisplay * display, guint target,
     guint format, guint width, guint height)
 {
+  GstVaapiTextureEGL *texture_egl;
+
   g_return_val_if_fail (GST_VAAPI_IS_DISPLAY_EGL (display), NULL);
 
-  return gst_vaapi_texture_new_internal (GST_VAAPI_TEXTURE_CLASS
-      (gst_vaapi_texture_egl_class ()), display, GST_VAAPI_ID_INVALID, target,
-      format, width, height);
+  texture_egl = g_slice_new0 (GstVaapiTextureEGL);
+  if (!texture_egl)
+    return NULL;
+
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (texture_egl), 0,
+      gst_vaapi_texture_egl_get_type (), NULL, NULL,
+      (GstMiniObjectFreeFunction) gst_vaapi_texture_egl_free);
+
+  return gst_vaapi_texture_init_internal ((GstVaapiTexture *) texture_egl,
+      (GstVaapiTextureAllocateFunc) gst_vaapi_texture_egl_create,
+      (GstVaapiTexturePutSurfaceFunc) gst_vaapi_texture_egl_put_surface,
+      display, GST_VAAPI_ID_INVALID, target, format, width, height);
 }
 
 /**
@@ -356,10 +343,21 @@ GstVaapiTexture *
 gst_vaapi_texture_egl_new_wrapped (GstVaapiDisplay * display,
     guint texture_id, guint target, GLenum format, guint width, guint height)
 {
+  GstVaapiTextureEGL *texture_egl;
+
   g_return_val_if_fail (GST_VAAPI_IS_DISPLAY_EGL (display), NULL);
   g_return_val_if_fail (texture_id != GL_NONE, NULL);
 
-  return gst_vaapi_texture_new_internal (GST_VAAPI_TEXTURE_CLASS
-      (gst_vaapi_texture_egl_class ()), display, texture_id, target, format,
-      width, height);
+  texture_egl = g_slice_new0 (GstVaapiTextureEGL);
+  if (!texture_egl)
+    return NULL;
+
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (texture_egl), 0,
+      gst_vaapi_texture_egl_get_type (), NULL, NULL,
+      (GstMiniObjectFreeFunction) gst_vaapi_texture_egl_free);
+
+  return gst_vaapi_texture_init_internal ((GstVaapiTexture *) texture_egl,
+      (GstVaapiTextureAllocateFunc) gst_vaapi_texture_egl_create,
+      (GstVaapiTexturePutSurfaceFunc) gst_vaapi_texture_egl_put_surface,
+      display, texture_id, target, format, width, height);
 }

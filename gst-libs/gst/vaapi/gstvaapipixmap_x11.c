@@ -38,16 +38,9 @@
 #define DEBUG 1
 #include "gstvaapidebug.h"
 
-typedef struct _GstVaapiPixmapX11Class GstVaapiPixmapX11Class;
-
 struct _GstVaapiPixmapX11
 {
   GstVaapiPixmap parent_instance;
-};
-
-struct _GstVaapiPixmapX11Class
-{
-  GstVaapiPixmapClass parent_class;
 };
 
 static gboolean
@@ -103,7 +96,7 @@ gst_vaapi_pixmap_x11_create (GstVaapiPixmap * pixmap)
 }
 
 static void
-gst_vaapi_pixmap_x11_destroy (GstVaapiPixmap * pixmap)
+gst_vaapi_pixmap_x11_free (GstVaapiPixmap * pixmap)
 {
   const Pixmap xid = GST_VAAPI_OBJECT_ID (pixmap);
 
@@ -115,6 +108,10 @@ gst_vaapi_pixmap_x11_destroy (GstVaapiPixmap * pixmap)
     }
     GST_VAAPI_OBJECT_ID (pixmap) = None;
   }
+
+  gst_vaapi_display_replace (&pixmap->display, NULL);
+
+  g_slice_free1 (sizeof (GstVaapiPixmapX11), pixmap);
 }
 
 static gboolean
@@ -145,24 +142,8 @@ gst_vaapi_pixmap_x11_render (GstVaapiPixmap * pixmap, GstVaapiSurface * surface,
   return TRUE;
 }
 
-void
-gst_vaapi_pixmap_x11_class_init (GstVaapiPixmapX11Class * klass)
-{
-  GstVaapiObjectClass *const object_class = GST_VAAPI_OBJECT_CLASS (klass);
-  GstVaapiPixmapClass *const pixmap_class = GST_VAAPI_PIXMAP_CLASS (klass);
-
-  object_class->finalize = (GstVaapiObjectFinalizeFunc)
-      gst_vaapi_pixmap_x11_destroy;
-
-  pixmap_class->create = gst_vaapi_pixmap_x11_create;
-  pixmap_class->render = gst_vaapi_pixmap_x11_render;
-}
-
-#define gst_vaapi_pixmap_x11_finalize \
-    gst_vaapi_pixmap_x11_destroy
-
-GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiPixmapX11,
-    gst_vaapi_pixmap_x11, gst_vaapi_pixmap_x11_class_init (&g_class))
+GType gst_vaapi_pixmap_x11_get_type (void);
+GST_DEFINE_MINI_OBJECT_TYPE (GstVaapiPixmapX11, gst_vaapi_pixmap_x11);
 
 /**
  * gst_vaapi_pixmap_x11_new:
@@ -176,17 +157,28 @@ GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiPixmapX11,
  *
  * Return value: the newly allocated #GstVaapiPixmap object
  */
-     GstVaapiPixmap *gst_vaapi_pixmap_x11_new (GstVaapiDisplay * display,
+GstVaapiPixmap *
+gst_vaapi_pixmap_x11_new (GstVaapiDisplay * display,
     GstVideoFormat format, guint width, guint height)
 {
+  GstVaapiPixmapX11 *pixmap_x11;
+
   GST_DEBUG ("new pixmap, format %s, size %ux%u",
       gst_vaapi_video_format_to_string (format), width, height);
 
   g_return_val_if_fail (GST_VAAPI_IS_DISPLAY_X11 (display), NULL);
 
-  return
-      gst_vaapi_pixmap_new (GST_VAAPI_PIXMAP_CLASS (gst_vaapi_pixmap_x11_class
-          ()), display, format, width, height);
+  pixmap_x11 = g_slice_new0 (GstVaapiPixmapX11);
+  if (!pixmap_x11)
+    return NULL;
+
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (pixmap_x11), 0,
+      gst_vaapi_pixmap_x11_get_type (), NULL, NULL,
+      (GstMiniObjectFreeFunction) gst_vaapi_pixmap_x11_free);
+
+  return gst_vaapi_pixmap_init ((GstVaapiPixmap *) pixmap_x11,
+      gst_vaapi_pixmap_x11_create, gst_vaapi_pixmap_x11_render,
+      display, format, width, height);
 }
 
 /**
@@ -204,14 +196,24 @@ GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiPixmapX11,
 GstVaapiPixmap *
 gst_vaapi_pixmap_x11_new_with_xid (GstVaapiDisplay * display, Pixmap xid)
 {
+  GstVaapiPixmapX11 *pixmap_x11;
+
   GST_DEBUG ("new pixmap from xid 0x%08x", (guint) xid);
 
   g_return_val_if_fail (GST_VAAPI_IS_DISPLAY_X11 (display), NULL);
   g_return_val_if_fail (xid != None, NULL);
 
-  return
-      gst_vaapi_pixmap_new_from_native (GST_VAAPI_PIXMAP_CLASS
-      (gst_vaapi_pixmap_x11_class ()), display, GSIZE_TO_POINTER (xid));
+  pixmap_x11 = g_slice_new0 (GstVaapiPixmapX11);
+  if (!pixmap_x11)
+    return NULL;
+
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (pixmap_x11), 0,
+      gst_vaapi_pixmap_x11_get_type (), NULL, NULL,
+      (GstMiniObjectFreeFunction) gst_vaapi_pixmap_x11_free);
+
+  return gst_vaapi_pixmap_init_from_native ((GstVaapiPixmap *) pixmap_x11,
+      gst_vaapi_pixmap_x11_create, gst_vaapi_pixmap_x11_render,
+      display, GSIZE_TO_POINTER (xid));
 }
 
 /**

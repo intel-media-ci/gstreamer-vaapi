@@ -37,8 +37,6 @@
 #define DEBUG 1
 #include "gstvaapidebug.h"
 
-typedef struct _GstVaapiSubpictureClass GstVaapiSubpictureClass;
-
 /**
  * GstVaapiSubpicture:
  *
@@ -46,23 +44,14 @@ typedef struct _GstVaapiSubpictureClass GstVaapiSubpictureClass;
  */
 struct _GstVaapiSubpicture
 {
-  /*< private > */
-  GstVaapiObject parent_instance;
+  /*< common header > */
+  GstMiniObject mini_object;
+  GstVaapiDisplay *display;
+  GstVaapiID object_id;
 
   GstVaapiImage *image;
   guint flags;
   gfloat global_alpha;
-};
-
-/**
- * GstVaapiSubpictureClass:
- *
- * A VA subpicture wrapper class
- */
-struct _GstVaapiSubpictureClass
-{
-  /*< private > */
-  GstVaapiObjectClass parent_class;
 };
 
 static void
@@ -91,6 +80,14 @@ gst_vaapi_subpicture_destroy (GstVaapiSubpicture * subpicture)
   gst_vaapi_object_replace (&subpicture->image, NULL);
 }
 
+static void
+gst_vaapi_subpicture_free (GstVaapiSubpicture * subpicture)
+{
+  gst_vaapi_subpicture_destroy (subpicture);
+  gst_vaapi_display_replace (&subpicture->display, NULL);
+  g_slice_free1 (sizeof (GstVaapiSubpicture), subpicture);
+}
+
 static gboolean
 gst_vaapi_subpicture_create (GstVaapiSubpicture * subpicture,
     GstVaapiImage * image)
@@ -113,8 +110,8 @@ gst_vaapi_subpicture_create (GstVaapiSubpicture * subpicture,
   return TRUE;
 }
 
-#define gst_vaapi_subpicture_finalize gst_vaapi_subpicture_destroy
-GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiSubpicture, gst_vaapi_subpicture)
+GType gst_vaapi_subpicture_get_type (void);
+GST_DEFINE_MINI_OBJECT_TYPE (GstVaapiSubpicture, gst_vaapi_subpicture);
 
 /**
  * gst_vaapi_subpicture_new:
@@ -126,8 +123,8 @@ GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiSubpicture, gst_vaapi_subpicture)
  *
  * Return value: the newly allocated #GstVaapiSubpicture object
  */
-     GstVaapiSubpicture *gst_vaapi_subpicture_new (GstVaapiImage * image,
-    guint flags)
+GstVaapiSubpicture *
+gst_vaapi_subpicture_new (GstVaapiImage * image, guint flags)
 {
   GstVaapiSubpicture *subpicture;
   GstVaapiDisplay *display;
@@ -146,10 +143,16 @@ GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiSubpicture, gst_vaapi_subpicture)
   if (flags & ~va_flags)
     return NULL;
 
-  subpicture = gst_vaapi_object_new (gst_vaapi_subpicture_class (), display);
+  subpicture = g_slice_new0 (GstVaapiSubpicture);
   if (!subpicture)
     return NULL;
 
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (subpicture), 0,
+      gst_vaapi_subpicture_get_type (), NULL, NULL,
+      (GstMiniObjectFreeFunction) gst_vaapi_subpicture_free);
+
+  subpicture->display = gst_object_ref (display);
+  subpicture->object_id = VA_INVALID_ID;
   subpicture->global_alpha = 1.0f;
   if (!gst_vaapi_subpicture_set_image (subpicture, image))
     goto error;

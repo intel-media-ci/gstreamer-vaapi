@@ -35,7 +35,6 @@ G_BEGIN_DECLS
     ((GstVaapiPixmap *)(obj))
 
 typedef struct _GstVaapiPixmap                  GstVaapiPixmap;
-typedef struct _GstVaapiPixmapClass             GstVaapiPixmapClass;
 
 /**
  * GST_VAAPI_PIXMAP_FORMAT:

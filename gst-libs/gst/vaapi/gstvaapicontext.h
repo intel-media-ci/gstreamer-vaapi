@@ -41,7 +41,6 @@ G_BEGIN_DECLS
 typedef struct _GstVaapiConfigInfoEncoder GstVaapiConfigInfoEncoder;
 typedef struct _GstVaapiContextInfo GstVaapiContextInfo;
 typedef struct _GstVaapiContext GstVaapiContext;
-typedef struct _GstVaapiContextClass GstVaapiContextClass;
 
 /**
  * GstVaapiContextUsage:
@@ -104,8 +103,10 @@ struct _GstVaapiContextInfo
  */
 struct _GstVaapiContext
 {
-  /*< private >*/
-  GstVaapiObject parent_instance;
+  /*< common header >*/
+  GstMiniObject mini_object;
+  GstVaapiDisplay *display;
+  GstVaapiID object_id;
 
   GstVaapiContextInfo info;
   VAProfile va_profile;
@@ -117,17 +118,6 @@ struct _GstVaapiContext
   guint overlay_id;
   gboolean reset_on_resize;
   GstVaapiConfigSurfaceAttributes *attribs;
-};
-
-/**
- * GstVaapiContextClass:
- *
- * A VA context wrapper class.
- */
-struct _GstVaapiContextClass
-{
-  /*< private >*/
-  GstVaapiObjectClass parent_class;
 };
 
 G_GNUC_INTERNAL
