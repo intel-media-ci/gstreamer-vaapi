@@ -448,7 +448,7 @@ gst_vaapi_window_x11_render (GstVaapiWindow * window,
       GST_VAAPI_WINDOW_X11_GET_PRIVATE (window);
   gboolean ret = FALSE;
 
-  surface_id = GST_VAAPI_OBJECT_ID (surface);
+  surface_id = surface->object_id;
   if (surface_id == VA_INVALID_ID)
     return FALSE;
 
@@ -475,7 +475,7 @@ conversion:
     if (G_LIKELY (vpp_surface)) {
       GstVaapiRectangle vpp_src_rect;
 
-      surface_id = GST_VAAPI_OBJECT_ID (vpp_surface);
+      surface_id = vpp_surface->object_id;
       vpp_src_rect.x = vpp_src_rect.y = 0;
       vpp_src_rect.width = GST_VAAPI_SURFACE_WIDTH (vpp_surface);
       vpp_src_rect.height = GST_VAAPI_SURFACE_HEIGHT (vpp_surface);

@@ -34,7 +34,7 @@ static gboolean
 coded_buffer_create (GstVaapiCodedBuffer * buf, guint buf_size,
     GstVaapiContext * context)
 {
-  GstVaapiDisplay *const display = GST_VAAPI_OBJECT_DISPLAY (buf);
+  GstVaapiDisplay *const display = buf->display;
   VABufferID buf_id;
   gboolean success;
 
@@ -47,25 +47,29 @@ coded_buffer_create (GstVaapiCodedBuffer * buf, guint buf_size,
     return FALSE;
 
   GST_DEBUG ("coded buffer %" GST_VAAPI_ID_FORMAT, GST_VAAPI_ID_ARGS (buf_id));
-  GST_VAAPI_OBJECT_ID (buf) = buf_id;
+  buf->object_id = buf_id;
   return TRUE;
 }
 
 static void
-coded_buffer_destroy (GstVaapiCodedBuffer * buf)
+coded_buffer_free (GstVaapiCodedBuffer * buf)
 {
-  GstVaapiDisplay *const display = GST_VAAPI_OBJECT_DISPLAY (buf);
+  GstVaapiDisplay *const display = buf->display;
   VABufferID buf_id;
 
-  buf_id = GST_VAAPI_OBJECT_ID (buf);
+  buf_id = buf->object_id;
   GST_DEBUG ("coded buffer %" GST_VAAPI_ID_FORMAT, GST_VAAPI_ID_ARGS (buf_id));
 
   if (buf_id != VA_INVALID_ID) {
     GST_VAAPI_DISPLAY_LOCK (display);
     vaapi_destroy_buffer (GST_VAAPI_DISPLAY_VADISPLAY (display), &buf_id);
     GST_VAAPI_DISPLAY_UNLOCK (display);
-    GST_VAAPI_OBJECT_ID (buf) = VA_INVALID_ID;
+    buf->object_id = VA_INVALID_ID;
   }
+
+  gst_vaapi_display_replace (&buf->display, NULL);
+
+  g_slice_free1 (sizeof (GstVaapiCodedBuffer), buf);
 }
 
 static gboolean
@@ -74,10 +78,11 @@ coded_buffer_map (GstVaapiCodedBuffer * buf)
   if (buf->segment_list)
     return TRUE;
 
-  GST_VAAPI_OBJECT_LOCK_DISPLAY (buf);
-  buf->segment_list = vaapi_map_buffer (GST_VAAPI_OBJECT_VADISPLAY (buf),
-      GST_VAAPI_OBJECT_ID (buf));
-  GST_VAAPI_OBJECT_UNLOCK_DISPLAY (buf);
+  GST_VAAPI_DISPLAY_LOCK (buf->display);
+  buf->segment_list =
+      vaapi_map_buffer (GST_VAAPI_DISPLAY_VADISPLAY (buf->display),
+      buf->object_id);
+  GST_VAAPI_DISPLAY_UNLOCK (buf->display);
   return buf->segment_list != NULL;
 }
 
@@ -87,16 +92,14 @@ coded_buffer_unmap (GstVaapiCodedBuffer * buf)
   if (!buf->segment_list)
     return;
 
-  GST_VAAPI_OBJECT_LOCK_DISPLAY (buf);
-  vaapi_unmap_buffer (GST_VAAPI_OBJECT_VADISPLAY (buf),
-      GST_VAAPI_OBJECT_ID (buf), (void **) &buf->segment_list);
-  GST_VAAPI_OBJECT_UNLOCK_DISPLAY (buf);
+  GST_VAAPI_DISPLAY_LOCK (buf->display);
+  vaapi_unmap_buffer (GST_VAAPI_DISPLAY_VADISPLAY (buf->display),
+      buf->object_id, (void **) &buf->segment_list);
+  GST_VAAPI_DISPLAY_UNLOCK (buf->display);
 }
 
-/* *INDENT-OFF* */
-#define gst_vaapi_coded_buffer_finalize coded_buffer_destroy
-GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiCodedBuffer, gst_vaapi_coded_buffer)
-/* *INDENT-ON* */
+GType gst_vaapi_coded_buffer_get_type (void);
+GST_DEFINE_MINI_OBJECT_TYPE (GstVaapiCodedBuffer, gst_vaapi_coded_buffer);
 
 /*
  * gst_vaapi_coded_buffer_new:
@@ -120,9 +123,16 @@ gst_vaapi_coded_buffer_new (GstVaapiContext * context, guint buf_size)
   display = GST_VAAPI_CONTEXT_DISPLAY (context);
   g_return_val_if_fail (display != NULL, NULL);
 
-  buf = gst_vaapi_object_new (gst_vaapi_coded_buffer_class (), display);
+  buf = g_slice_new0 (GstVaapiCodedBuffer);
   if (!buf)
     return NULL;
+
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (buf), 0,
+      gst_vaapi_coded_buffer_get_type (), NULL, NULL,
+      (GstMiniObjectFreeFunction) coded_buffer_free);
+
+  buf->display = gst_object_ref (display);
+  buf->object_id = VA_INVALID_ID;
 
   if (!coded_buffer_create (buf, buf_size, context))
     goto error;
@@ -131,7 +141,7 @@ gst_vaapi_coded_buffer_new (GstVaapiContext * context, guint buf_size)
   /* ERRORS */
 error:
   {
-    gst_vaapi_object_unref (buf);
+    gst_vaapi_coded_buffer_unref (buf);
     return NULL;
   }
 }

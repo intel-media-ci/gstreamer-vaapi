@@ -42,6 +42,27 @@ typedef struct _GstVaapiCodedBuffer             GstVaapiCodedBuffer;
 typedef struct _GstVaapiCodedBufferProxy        GstVaapiCodedBufferProxy;
 typedef struct _GstVaapiCodedBufferPool         GstVaapiCodedBufferPool;
 
+static inline GstVaapiCodedBuffer *
+gst_vaapi_coded_buffer_ref (GstVaapiCodedBuffer * buf)
+{
+  return (GstVaapiCodedBuffer *) gst_mini_object_ref (
+      GST_MINI_OBJECT_CAST (buf));
+}
+
+static inline void
+gst_vaapi_coded_buffer_unref (GstVaapiCodedBuffer * buf)
+{
+  gst_mini_object_unref (GST_MINI_OBJECT_CAST (buf));
+}
+
+static inline gboolean
+gst_vaapi_coded_buffer_replace(GstVaapiCodedBuffer ** old_buf,
+    GstVaapiCodedBuffer * new_buf)
+{
+  return gst_mini_object_replace ((GstMiniObject **) old_buf,
+      (GstMiniObject *) new_buf);
+}
+
 gssize
 gst_vaapi_coded_buffer_get_size (GstVaapiCodedBuffer * buf);
 

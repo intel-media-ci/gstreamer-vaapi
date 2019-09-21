@@ -37,9 +37,9 @@ gst_vaapi_surface_get_drm_buf_handle (GstVaapiSurface * surface, guint type)
     goto error_derive_image;
 
   /* The proxy takes ownership if the image, even creation failure. */
-  proxy =
-      gst_vaapi_buffer_proxy_new_from_object (GST_VAAPI_OBJECT (surface),
-      image->internal_image.buf, type, gst_vaapi_object_unref, image);
+  proxy = gst_vaapi_buffer_proxy_new_from_object (surface,
+      image->internal_image.buf, type, (GDestroyNotify) gst_vaapi_image_unref,
+      image);
   if (!proxy)
     goto error_alloc_export_buffer;
   return proxy;
