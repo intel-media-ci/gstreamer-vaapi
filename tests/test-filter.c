@@ -117,7 +117,7 @@ create_test_surface (GstVaapiDisplay * display, guint width, guint height,
   if (!image_upload (image, surface))
     goto error_upload_image;
 
-  gst_vaapi_object_unref (image);
+  gst_vaapi_image_unref (image);
   return surface;
 
   /* ERRORS */
@@ -139,9 +139,9 @@ error_upload_image:
   goto error_cleanup;
 error_cleanup:
   if (image)
-    gst_vaapi_object_unref (image);
+    gst_vaapi_image_unref (image);
   if (surface)
-    gst_vaapi_object_unref (surface);
+    gst_vaapi_surface_unref (surface);
   if (error_ptr)
     *error_ptr = error;
   else
@@ -441,8 +441,8 @@ main (int argc, char *argv[])
   pause ();
 
   gst_object_unref (filter);
-  gst_vaapi_object_unref (dst_surface);
-  gst_vaapi_object_unref (src_surface);
+  gst_vaapi_surface_unref (dst_surface);
+  gst_vaapi_surface_unref (src_surface);
   gst_object_unref (window);
   gst_object_unref (display);
   video_output_exit ();

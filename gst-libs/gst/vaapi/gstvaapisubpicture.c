@@ -88,7 +88,7 @@ gst_vaapi_subpicture_destroy (GstVaapiSubpicture * subpicture)
     }
     GST_VAAPI_OBJECT_ID (subpicture) = VA_INVALID_ID;
   }
-  gst_vaapi_object_replace (&subpicture->image, NULL);
+  gst_vaapi_image_replace (&subpicture->image, NULL);
 }
 
 static gboolean
@@ -101,7 +101,7 @@ gst_vaapi_subpicture_create (GstVaapiSubpicture * subpicture,
 
   GST_VAAPI_DISPLAY_LOCK (display);
   status = vaCreateSubpicture (GST_VAAPI_DISPLAY_VADISPLAY (display),
-      GST_VAAPI_OBJECT_ID (image), &subpicture_id);
+      image->object_id, &subpicture_id);
   GST_VAAPI_DISPLAY_UNLOCK (display);
   if (!vaapi_check_status (status, "vaCreateSubpicture()"))
     return FALSE;
@@ -109,7 +109,7 @@ gst_vaapi_subpicture_create (GstVaapiSubpicture * subpicture,
   GST_DEBUG ("subpicture %" GST_VAAPI_ID_FORMAT,
       GST_VAAPI_ID_ARGS (subpicture_id));
   GST_VAAPI_OBJECT_ID (subpicture) = subpicture_id;
-  subpicture->image = gst_vaapi_object_ref (image);
+  subpicture->image = gst_vaapi_image_ref (image);
   return TRUE;
 }
 
@@ -137,9 +137,9 @@ GST_VAAPI_OBJECT_DEFINE_CLASS (GstVaapiSubpicture, gst_vaapi_subpicture)
   g_return_val_if_fail (image != NULL, NULL);
 
   GST_DEBUG ("create from image %" GST_VAAPI_ID_FORMAT,
-      GST_VAAPI_ID_ARGS (GST_VAAPI_OBJECT_ID (image)));
+      GST_VAAPI_ID_ARGS (image->object_id));
 
-  display = GST_VAAPI_OBJECT_DISPLAY (image);
+  display = image->display;
   format = GST_VAAPI_IMAGE_FORMAT (image);
   if (!gst_vaapi_display_has_subpicture_format (display, format, &va_flags))
     return NULL;

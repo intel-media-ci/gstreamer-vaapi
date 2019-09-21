@@ -181,6 +181,30 @@ typedef enum
 typedef struct _GstVaapiSurface                 GstVaapiSurface;
 typedef struct _GstVaapiSurfaceProxy            GstVaapiSurfaceProxy;
 
+static inline GstVaapiSurface *
+gst_vaapi_surface_ref (GstVaapiSurface * surface)
+{
+  return (GstVaapiSurface *) gst_mini_object_ref (
+      GST_MINI_OBJECT_CAST (surface));
+}
+
+static inline void
+gst_vaapi_surface_unref (GstVaapiSurface * surface)
+{
+  gst_mini_object_unref (GST_MINI_OBJECT_CAST (surface));
+}
+
+static inline gboolean
+gst_vaapi_surface_replace(GstVaapiSurface ** old_surface,
+    GstVaapiSurface * new_surface)
+{
+  return gst_mini_object_replace ((GstMiniObject **) old_surface,
+      (GstMiniObject *) new_surface);
+}
+
+GstVaapiDisplay *
+gst_vaapi_surface_get_display (GstVaapiSurface * surface);
+
 GstVaapiSurface *
 gst_vaapi_surface_new_from_formats (GstVaapiDisplay * display,
     GstVaapiChromaType chroma_type, guint width, guint height, GArray * formts);

@@ -2015,7 +2015,7 @@ fill_picture (GstVaapiEncoderH264Fei * encoder, GstVaapiEncPicture * picture,
   for (; i < 16; ++i) {
     pic_param->ReferenceFrames[i].picture_id = VA_INVALID_ID;
   }
-  pic_param->coded_buf = GST_VAAPI_OBJECT_ID (codedbuf);
+  pic_param->coded_buf = codedbuf->object_id;
 
   pic_param->pic_parameter_set_id = encoder->view_idx;
   pic_param->seq_parameter_set_id = encoder->view_idx ? 1 : 0;
@@ -3831,7 +3831,7 @@ create_context_for_enc (GstVaapiEncoder * fei_encoder,
     GstVaapiSurface *const surface = g_ptr_array_index (context->surfaces, i);
     if (!surface)
       goto cleanup;
-    surface_id = GST_VAAPI_OBJECT_ID (surface);
+    surface_id = surface->object_id;
     g_array_append_val (surfaces, surface_id);
   }
   g_assert (surfaces->len == context->surfaces->len);

@@ -61,6 +61,30 @@ G_BEGIN_DECLS
 
 typedef struct _GstVaapiImage                   GstVaapiImage;
 
+static inline GstVaapiImage *
+gst_vaapi_image_ref (GstVaapiImage * image)
+{
+  return (GstVaapiImage *) gst_mini_object_ref (
+      GST_MINI_OBJECT_CAST (image));
+}
+
+static inline void
+gst_vaapi_image_unref (GstVaapiImage * image)
+{
+  gst_mini_object_unref (GST_MINI_OBJECT_CAST (image));
+}
+
+static inline gboolean
+gst_vaapi_image_replace(GstVaapiImage ** old_image,
+    GstVaapiImage * new_image)
+{
+  return gst_mini_object_replace ((GstMiniObject **) old_image,
+      (GstMiniObject *) new_image);
+}
+
+GstVaapiDisplay *
+gst_vaapi_image_get_display (GstVaapiImage * image);
+
 GstVaapiImage *
 gst_vaapi_image_new(
     GstVaapiDisplay    *display,

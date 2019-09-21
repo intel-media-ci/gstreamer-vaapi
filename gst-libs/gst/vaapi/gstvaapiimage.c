@@ -114,15 +114,15 @@ vaapi_image_is_linear (const VAImage * va_image)
 }
 
 static void
-gst_vaapi_image_destroy (GstVaapiImage * image)
+gst_vaapi_image_free (GstVaapiImage * image)
 {
-  GstVaapiDisplay *const display = GST_VAAPI_OBJECT_DISPLAY (image);
+  GstVaapiDisplay *const display = image->display;
   VAImageID image_id;
   VAStatus status;
 
   _gst_vaapi_image_unmap (image);
 
-  image_id = GST_VAAPI_OBJECT_ID (image);
+  image_id = image->object_id;
   GST_DEBUG ("image %" GST_VAAPI_ID_FORMAT, GST_VAAPI_ID_ARGS (image_id));
 
   if (image_id != VA_INVALID_ID) {
@@ -132,14 +132,18 @@ gst_vaapi_image_destroy (GstVaapiImage * image)
     if (!vaapi_check_status (status, "vaDestroyImage()"))
       GST_WARNING ("failed to destroy image %" GST_VAAPI_ID_FORMAT,
           GST_VAAPI_ID_ARGS (image_id));
-    GST_VAAPI_OBJECT_ID (image) = VA_INVALID_ID;
+    image->object_id = VA_INVALID_ID;
   }
+
+  gst_vaapi_display_replace (&image->display, NULL);
+
+  g_slice_free1 (sizeof (GstVaapiImage), image);
 }
 
 static gboolean
 _gst_vaapi_image_create (GstVaapiImage * image, GstVideoFormat format)
 {
-  GstVaapiDisplay *const display = GST_VAAPI_OBJECT_DISPLAY (image);
+  GstVaapiDisplay *const display = image->display;
   const VAImageFormat *va_format;
   VAStatus status;
 
@@ -210,30 +214,48 @@ gst_vaapi_image_create (GstVaapiImage * image, GstVideoFormat format,
   image->is_linear = vaapi_image_is_linear (&image->image);
 
   GST_DEBUG ("image %" GST_VAAPI_ID_FORMAT, GST_VAAPI_ID_ARGS (image_id));
-  GST_VAAPI_OBJECT_ID (image) = image_id;
+  image->object_id = image_id;
   return TRUE;
 }
 
-static void
-gst_vaapi_image_init (GstVaapiImage * image)
+GType gst_vaapi_image_get_type (void);
+GST_DEFINE_MINI_OBJECT_TYPE (GstVaapiImage, gst_vaapi_image);
+
+static GstVaapiImage *
+gst_vaapi_image_create_object (GstVaapiDisplay * display)
 {
+  GstVaapiImage *image = g_slice_new0 (GstVaapiImage);
+  if (!image)
+    return NULL;
+
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (image), 0,
+      gst_vaapi_image_get_type (), NULL, NULL,
+      (GstMiniObjectFreeFunction) gst_vaapi_image_free);
+
+  image->display = gst_object_ref (display);
+  image->object_id = VA_INVALID_ID;
   image->internal_image.image_id = VA_INVALID_ID;
   image->internal_image.buf = VA_INVALID_ID;
   image->image.image_id = VA_INVALID_ID;
   image->image.buf = VA_INVALID_ID;
+
+  return image;
 }
 
-static void
-gst_vaapi_image_class_init (GstVaapiImageClass * klass)
+/**
+ * gst_vaapi_image_get_display:
+ * @image: a #GstVaapiImage
+ *
+ * Returns the #GstVaapiDisplay this @image is bound to.
+ *
+ * Return value: the parent #GstVaapiDisplay object
+ */
+GstVaapiDisplay *
+gst_vaapi_image_get_display (GstVaapiImage * image)
 {
-  GstVaapiObjectClass *const object_class = GST_VAAPI_OBJECT_CLASS (klass);
-
-  object_class->init = (GstVaapiObjectInitFunc) gst_vaapi_image_init;
+  g_return_val_if_fail (image != NULL, NULL);
+  return image->display;
 }
-
-#define gst_vaapi_image_finalize gst_vaapi_image_destroy
-GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiImage,
-    gst_vaapi_image, gst_vaapi_image_class_init (&g_class))
 
 /**
  * gst_vaapi_image_new:
@@ -247,7 +269,8 @@ GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiImage,
  *
  * Return value: the newly allocated #GstVaapiImage object
  */
-     GstVaapiImage *gst_vaapi_image_new (GstVaapiDisplay * display,
+GstVaapiImage *
+gst_vaapi_image_new (GstVaapiDisplay * display,
     GstVideoFormat format, guint width, guint height)
 {
   GstVaapiImage *image;
@@ -258,7 +281,7 @@ GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiImage,
   GST_DEBUG ("format %s, size %ux%u", gst_vaapi_video_format_to_string (format),
       width, height);
 
-  image = gst_vaapi_object_new (gst_vaapi_image_class (), display);
+  image = gst_vaapi_image_create_object (display);
   if (!image)
     return NULL;
 
@@ -269,7 +292,7 @@ GST_VAAPI_OBJECT_DEFINE_CLASS_WITH_CODE (GstVaapiImage,
   /* ERRORS */
 error:
   {
-    gst_vaapi_object_unref (image);
+    gst_vaapi_image_unref (image);
     return NULL;
   }
 }
@@ -300,7 +323,7 @@ gst_vaapi_image_new_with_image (GstVaapiDisplay * display, VAImage * va_image)
       GST_FOURCC_ARGS (va_image->format.fourcc),
       va_image->width, va_image->height);
 
-  image = gst_vaapi_object_new (gst_vaapi_image_class (), display);
+  image = gst_vaapi_image_create_object (display);
   if (!image)
     return NULL;
 
@@ -311,7 +334,7 @@ gst_vaapi_image_new_with_image (GstVaapiDisplay * display, VAImage * va_image)
   /* ERRORS */
 error:
   {
-    gst_vaapi_object_unref (image);
+    gst_vaapi_image_unref (image);
     return NULL;
   }
 }
@@ -329,7 +352,7 @@ gst_vaapi_image_get_id (GstVaapiImage * image)
 {
   g_return_val_if_fail (image != NULL, VA_INVALID_ID);
 
-  return GST_VAAPI_OBJECT_ID (image);
+  return image->object_id;
 }
 
 /**
@@ -385,7 +408,7 @@ _gst_vaapi_image_set_image (GstVaapiImage * image, const VAImage * va_image)
   image->width = va_image->width;
   image->height = va_image->height;
 
-  GST_VAAPI_OBJECT_ID (image) = va_image->image_id;
+  image->object_id = va_image->image_id;
 
   /* Try to linearize image */
   if (!image->is_linear) {
@@ -554,7 +577,7 @@ _gst_vaapi_image_map (GstVaapiImage * image, GstVaapiImageRaw * raw_image)
   if (_gst_vaapi_image_is_mapped (image))
     goto map_success;
 
-  display = GST_VAAPI_OBJECT_DISPLAY (image);
+  display = image->display;
   if (!display)
     return FALSE;
 
@@ -607,7 +630,7 @@ _gst_vaapi_image_unmap (GstVaapiImage * image)
   if (!_gst_vaapi_image_is_mapped (image))
     return TRUE;
 
-  display = GST_VAAPI_OBJECT_DISPLAY (image);
+  display = image->display;
   if (!display)
     return FALSE;
 

@@ -29,8 +29,6 @@
 
 G_BEGIN_DECLS
 
-typedef struct _GstVaapiSurfaceClass            GstVaapiSurfaceClass;
-
 /**
  * GstVaapiSurface:
  *
@@ -39,7 +37,9 @@ typedef struct _GstVaapiSurfaceClass            GstVaapiSurfaceClass;
 struct _GstVaapiSurface
 {
   /*< private >*/
-  GstVaapiObject parent_instance;
+  GstMiniObject mini_object;
+  GstVaapiDisplay *display;
+  GstVaapiID object_id;
 
   GstVaapiBufferProxy *extbuf_proxy;
   GstVideoFormat format;
@@ -47,17 +47,6 @@ struct _GstVaapiSurface
   guint height;
   GstVaapiChromaType chroma_type;
   GPtrArray *subpictures;
-};
-
-/**
- * GstVaapiSurfaceClass:
- *
- * A VA surface wrapper class.
- */
-struct _GstVaapiSurfaceClass
-{
-  /*< private >*/
-  GstVaapiObjectClass parent_class;
 };
 
 /**

@@ -118,7 +118,7 @@ _set_cached_surface (GstBuffer * buf, GstVaapiSurface * surface)
 {
   return gst_mini_object_set_qdata (GST_MINI_OBJECT (buf),
       g_quark_from_static_string ("GstVaapiDMABufSurface"), surface,
-      (GDestroyNotify) gst_vaapi_object_unref);
+      (GDestroyNotify) gst_vaapi_surface_unref);
 }
 
 static gboolean
@@ -1301,7 +1301,7 @@ extract_allowed_surface_formats (GstVaapiDisplay * display,
     if (!image) {
       /* Just reuse the surface if the format is specified */
       if (specified_format == GST_VIDEO_FORMAT_UNKNOWN)
-        gst_vaapi_object_replace (&surface, NULL);
+        gst_vaapi_surface_replace (&surface, NULL);
 
       continue;
     }
@@ -1315,14 +1315,14 @@ extract_allowed_surface_formats (GstVaapiDisplay * display,
     if (res)
       g_array_append_val (out_formats, img_format);
 
-    gst_vaapi_object_unref (image);
+    gst_vaapi_image_unref (image);
     /* Just reuse the surface if the format is specified */
     if (specified_format == GST_VIDEO_FORMAT_UNKNOWN)
-      gst_vaapi_object_replace (&surface, NULL);
+      gst_vaapi_surface_replace (&surface, NULL);
   }
 
   if (surface)
-    gst_vaapi_object_unref (surface);
+    gst_vaapi_surface_unref (surface);
 
   if (out_formats->len == 0) {
     g_array_unref (out_formats);

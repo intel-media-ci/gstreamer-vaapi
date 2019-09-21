@@ -32,7 +32,7 @@
 #include "gstvaapicontext.h"
 #include "gstvaapidisplay_priv.h"
 #include "gstvaapiobject_priv.h"
-#include "gstvaapisurface.h"
+#include "gstvaapisurface_priv.h"
 #include "gstvaapisurfacepool.h"
 #include "gstvaapisurfaceproxy.h"
 #include "gstvaapivideopool_priv.h"
@@ -148,7 +148,7 @@ context_create_surfaces (GstVaapiContext * context)
   num_surfaces = cip->ref_frames + SCRATCH_SURFACES_COUNT;
   if (!context->surfaces) {
     context->surfaces = g_ptr_array_new_full (num_surfaces,
-        (GDestroyNotify) gst_vaapi_object_unref);
+        (GDestroyNotify) gst_vaapi_surface_unref);
     if (!context->surfaces)
       return FALSE;
   }
@@ -189,7 +189,7 @@ context_create (GstVaapiContext * context)
     GstVaapiSurface *const surface = g_ptr_array_index (context->surfaces, i);
     if (!surface)
       goto cleanup;
-    surface_id = GST_VAAPI_OBJECT_ID (surface);
+    surface_id = surface->object_id;
     g_array_append_val (surfaces, surface_id);
   }
   g_assert (surfaces->len == context->surfaces->len);
