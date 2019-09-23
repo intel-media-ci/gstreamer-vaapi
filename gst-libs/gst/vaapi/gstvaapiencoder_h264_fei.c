@@ -3796,7 +3796,7 @@ static inline gboolean
 context_get_attribute (GstVaapiContext * context, VAConfigAttribType type,
     guint * out_value_ptr)
 {
-  return gst_vaapi_get_config_attribute (GST_VAAPI_OBJECT_DISPLAY (context),
+  return gst_vaapi_get_config_attribute (context->display,
       context->va_profile, context->va_entrypoint, type, out_value_ptr);
 }
 

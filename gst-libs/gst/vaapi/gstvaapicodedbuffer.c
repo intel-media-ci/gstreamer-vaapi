@@ -40,8 +40,7 @@ coded_buffer_create (GstVaapiCodedBuffer * buf, guint buf_size,
 
   GST_VAAPI_DISPLAY_LOCK (display);
   success = vaapi_create_buffer (GST_VAAPI_DISPLAY_VADISPLAY (display),
-      GST_VAAPI_OBJECT_ID (context), VAEncCodedBufferType, buf_size, NULL,
-      &buf_id, NULL);
+      context->object_id, VAEncCodedBufferType, buf_size, NULL, &buf_id, NULL);
   GST_VAAPI_DISPLAY_UNLOCK (display);
   if (!success)
     return FALSE;
@@ -117,7 +116,7 @@ gst_vaapi_coded_buffer_new (GstVaapiContext * context, guint buf_size)
   g_return_val_if_fail (context != NULL, NULL);
   g_return_val_if_fail (buf_size > 0, NULL);
 
-  display = GST_VAAPI_OBJECT_DISPLAY (context);
+  display = context->display;
   g_return_val_if_fail (display != NULL, NULL);
 
   buf = gst_vaapi_object_new (gst_vaapi_coded_buffer_class (), display);

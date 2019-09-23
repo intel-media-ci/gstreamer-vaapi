@@ -1372,7 +1372,8 @@ gst_vaapi_encoder_finalize (GObject * object)
 {
   GstVaapiEncoder *encoder = GST_VAAPI_ENCODER (object);
 
-  gst_vaapi_object_replace (&encoder->context, NULL);
+  gst_vaapi_context_unref (encoder->context);
+  encoder->context = NULL;
   gst_vaapi_display_replace (&encoder->display, NULL);
   encoder->va_display = NULL;
 
@@ -1512,7 +1513,7 @@ create_test_context_config (GstVaapiEncoder * encoder, GstVaapiProfile profile)
   GstVaapiContext *ctxt;
 
   if (encoder->context)
-    return gst_vaapi_object_ref (encoder->context);
+    return gst_vaapi_context_ref (encoder->context);
 
   /* if there is no profile, let's figure out one */
   if (profile == GST_VAAPI_PROFILE_UNKNOWN)
@@ -1533,7 +1534,7 @@ get_profile_surface_formats (GstVaapiEncoder * encoder, GstVaapiProfile profile)
   if (!ctxt)
     return NULL;
   formats = gst_vaapi_context_get_surface_formats (ctxt);
-  gst_vaapi_object_unref (ctxt);
+  gst_vaapi_context_unref (ctxt);
   return formats;
 }
 
