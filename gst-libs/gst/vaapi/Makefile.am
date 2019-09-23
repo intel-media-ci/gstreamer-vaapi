@@ -58,7 +58,6 @@ libgstvaapi_source_c =				\
 	gstvaapiimage.c				\
 	gstvaapiimagepool.c			\
 	gstvaapiminiobject.c			\
-	gstvaapiobject.c			\
 	gstvaapiparser_frame.c			\
 	gstvaapipixmap.c			\
 	gstvaapiprofile.c			\
