@@ -326,7 +326,8 @@ get_profiles (GArray * configs)
 {
   GstVaapiConfig *config;
   GArray *out_profiles;
-  guint i;
+  GstVaapiProfile profile;
+  guint i, j;
 
   if (!configs)
     return NULL;
@@ -337,7 +338,13 @@ get_profiles (GArray * configs)
 
   for (i = 0; i < configs->len; i++) {
     config = &g_array_index (configs, GstVaapiConfig, i);
-    g_array_append_val (out_profiles, config->profile);
+    for (j = 0; j < out_profiles->len; j++) {
+      profile = g_array_index (out_profiles, GstVaapiProfile, j);
+      if (config->profile == profile)
+        break;
+    }
+    if (j >= out_profiles->len)
+      g_array_append_val (out_profiles, config->profile);
   }
   return out_profiles;
 }
