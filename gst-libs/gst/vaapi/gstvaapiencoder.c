@@ -1482,50 +1482,157 @@ gst_vaapi_encoder_class_init (GstVaapiEncoderClass * klass)
       properties);
 }
 
-static GstVaapiContext *
-create_test_context_config (GstVaapiEncoder * encoder, GstVaapiProfile profile)
+static GstVaapiConfig *
+create_test_config (GstVaapiEncoder * encoder, GstVaapiProfile profile,
+    GstVaapiEntrypoint entrypoint)
 {
   GstVaapiContextInfo cip = { 0, };
-  GstVaapiContext *ctxt;
+  GstVaapiConfig *config;
 
-  if (encoder->context)
-    return gst_vaapi_context_ref (encoder->context);
+  cip.entrypoint = entrypoint;
+  init_context_info (encoder, &cip, profile);
+
+  config = gst_vaapi_config_new (encoder->display, &cip);
+  if (config == NULL)
+    GST_WARNING ("Failed to create test config for profile: %s %s"
+        " entrypoint: %s",
+        gst_vaapi_profile_get_media_type_name (cip.profile),
+        gst_vaapi_profile_get_name (cip.profile),
+        string_of_VAEntrypoint (gst_vaapi_entrypoint_get_va_entrypoint
+            (cip.entrypoint)));
+
+  return config;
+}
+
+static GArray *
+config_get_surface_formats (GstVaapiConfig * config, gint * max_width,
+    gint * max_height, gint * min_width, gint * min_height)
+{
+  GArray *formats;
+  GstVaapiConfigSurfaceAttributes *surface_attr =
+      gst_vaapi_config_surface_attributes_get (config->display,
+      (VAConfigID) (config->object_id));
+
+  if (surface_attr == NULL)
+    return NULL;
+  if (surface_attr->min_width >= surface_attr->max_width ||
+      surface_attr->min_height >= surface_attr->max_height) {
+    gst_vaapi_config_surface_attributes_free (surface_attr);
+    return NULL;
+  }
+
+  formats = surface_attr->formats;
+  surface_attr->formats = NULL;
+  if (surface_attr->max_width > *max_width)
+    *max_width = surface_attr->max_width;
+  if (surface_attr->max_height > *max_height)
+    *max_height = surface_attr->max_height;
+  if (surface_attr->min_width < *min_width)
+    *min_width = surface_attr->min_width;
+  if (surface_attr->min_height < *min_height)
+    *min_height = surface_attr->min_height;
+
+  gst_vaapi_config_surface_attributes_free (surface_attr);
+
+  return formats;
+}
+
+static GArray *
+get_profile_surface_formats (GstVaapiEncoder * encoder, GstVaapiProfile profile,
+    gint * max_width, gint * max_height, gint * min_width, gint * min_height)
+{
+  GArray *entrypoints = NULL;
+  GstVaapiEntrypoint entrypoint = 0;
+  guint i, j, k;
+  GArray *formats;
+  GstVaapiConfig *config;
+  GArray *all_formats = NULL;
+  GstVideoFormat fmt, sfmt;
 
   /* if there is no profile, let's figure out one */
   if (profile == GST_VAAPI_PROFILE_UNKNOWN)
     profile = get_profile (encoder);
 
-  init_context_info (encoder, &cip, profile);
-  ctxt = gst_vaapi_context_new (encoder->display, &cip);
-  return ctxt;
-}
+  entrypoints =
+      gst_vaapi_display_get_encode_entrypoints_for_profile (encoder->display,
+      profile);
+  if (entrypoints == NULL) {
+    GST_WARNING ("can not find a entry point for profile: %s %s",
+        gst_vaapi_profile_get_media_type_name (profile),
+        gst_vaapi_profile_get_name (profile));
+    goto failed_get_formats;
+  }
 
-static GArray *
-get_profile_surface_formats (GstVaapiEncoder * encoder, GstVaapiProfile profile)
-{
-  GstVaapiContext *ctxt;
-  GArray *formats;
+  for (i = 0; i < entrypoints->len; i++) {
+    entrypoint = g_array_index (entrypoints, GstVaapiEntrypoint, i);
+    g_assert (entrypoint >= GST_VAAPI_ENTRYPOINT_SLICE_ENCODE);
+    config = create_test_config (encoder, profile, entrypoint);
+    if (!config)
+      continue;
 
-  ctxt = create_test_context_config (encoder, profile);
-  if (!ctxt)
-    return NULL;
-  formats = gst_vaapi_context_get_surface_formats (ctxt);
-  gst_vaapi_context_unref (ctxt);
-  return formats;
+    formats =
+        config_get_surface_formats (config, max_width, max_height, min_width,
+        min_height);
+    gst_vaapi_config_unref (config);
+    if (formats == NULL) {
+      GST_WARNING ("Failed to get formats for profile: %s %s"
+          " entrypoint: %s",
+          gst_vaapi_profile_get_media_type_name (profile),
+          gst_vaapi_profile_get_name (profile),
+          string_of_VAEntrypoint (gst_vaapi_entrypoint_get_va_entrypoint
+              (entrypoint)));
+      continue;
+    }
+
+    if (!all_formats) {
+      all_formats = formats;
+      continue;
+    }
+
+    /* Merge formats */
+    for (j = 0; j < formats->len; j++) {
+      sfmt = g_array_index (formats, GstVideoFormat, j);
+      for (k = 0; k < all_formats->len; k++) {
+        fmt = g_array_index (all_formats, GstVideoFormat, k);
+        if (fmt == sfmt)
+          break;
+      }
+      if (k >= all_formats->len)
+        g_array_append_val (all_formats, sfmt);
+    }
+    g_array_unref (formats);
+  }
+
+  g_array_unref (entrypoints);
+  return all_formats;
+
+failed_get_formats:
+  if (entrypoints)
+    g_array_unref (entrypoints);
+  if (all_formats)
+    gst_vaapi_object_unref (all_formats);
+  return NULL;
 }
 
 static gboolean
 merge_profile_surface_formats (GstVaapiEncoder * encoder,
-    GstVaapiProfile profile, GArray * formats)
+    GstVaapiProfile profile, GArray * formats,
+    gint * max_width, gint * max_height, gint * min_width, gint * min_height)
 {
   GArray *surface_fmts;
   guint i, j;
   GstVideoFormat fmt, sfmt;
+  gint new_max_width = 0;
+  gint new_max_height = 0;
+  gint new_min_width = G_MAXINT32;
+  gint new_min_height = G_MAXINT32;
 
   if (profile == GST_VAAPI_PROFILE_UNKNOWN)
     return FALSE;
 
-  surface_fmts = get_profile_surface_formats (encoder, profile);
+  surface_fmts =
+      get_profile_surface_formats (encoder, profile, &new_max_width,
+      &new_max_height, &new_min_width, &new_min_height);
   if (!surface_fmts)
     return FALSE;
 
@@ -1540,6 +1647,15 @@ merge_profile_surface_formats (GstVaapiEncoder * encoder,
       g_array_append_val (formats, sfmt);
   }
 
+  if (new_max_width > *max_width)
+    *max_width = new_max_width;
+  if (new_max_height > *max_height)
+    *max_height = new_max_height;
+  if (new_min_width > *min_width)
+    *min_width = new_min_width;
+  if (new_min_height > *min_height)
+    *min_height = new_min_height;
+
   g_array_unref (surface_fmts);
   return TRUE;
 }
@@ -1547,6 +1663,11 @@ merge_profile_surface_formats (GstVaapiEncoder * encoder,
 /**
  * gst_vaapi_encoder_get_surface_formats:
  * @encoder: a #GstVaapiEncoder instances
+ * @profile: specify #GsVaapiProfile
+ * @max_width: return the max width in #gint
+ * @max_height: return the max height in #gint
+ * @min_width: return the min width in #gint
+ * @min_height: return the min height in #gint
  *
  * Fetches the valid surface formats for the current VAConfig
  *
@@ -1554,15 +1675,22 @@ merge_profile_surface_formats (GstVaapiEncoder * encoder,
  **/
 GArray *
 gst_vaapi_encoder_get_surface_formats (GstVaapiEncoder * encoder,
-    GstVaapiProfile profile)
+    GstVaapiProfile profile, gint * max_width, gint * max_height,
+    gint * min_width, gint * min_height)
 {
   const GstVaapiEncoderClassData *const cdata =
       GST_VAAPI_ENCODER_GET_CLASS (encoder)->class_data;
   GArray *profiles, *formats;
   guint i;
 
+  g_return_val_if_fail (max_width, NULL);
+  g_return_val_if_fail (max_height, NULL);
+  g_return_val_if_fail (min_width, NULL);
+  g_return_val_if_fail (min_height, NULL);
+
   if (profile || encoder->context)
-    return get_profile_surface_formats (encoder, profile);
+    return get_profile_surface_formats (encoder, profile, max_width,
+        max_height, min_width, min_height);
 
   /* no specific context neither specific profile, let's iterate among
    * the codec's profiles */
@@ -1574,7 +1702,8 @@ gst_vaapi_encoder_get_surface_formats (GstVaapiEncoder * encoder,
   for (i = 0; i < profiles->len; i++) {
     profile = g_array_index (profiles, GstVaapiProfile, i);
     if (gst_vaapi_profile_get_codec (profile) == cdata->codec) {
-      if (!merge_profile_surface_formats (encoder, profile, formats)) {
+      if (!merge_profile_surface_formats (encoder, profile, formats,
+              max_width, max_height, min_width, min_height)) {
         g_array_unref (formats);
         formats = NULL;
         break;
