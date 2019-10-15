@@ -382,7 +382,9 @@ get_entrypoint (GstVaapiEncode * encode, GstVaapiProfile profile)
 static gboolean
 ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
 {
-  GstCaps *out_caps, *raw_caps = NULL;
+  GstCaps *out_caps = NULL;
+  GstCaps *raw_caps = NULL;
+  GstCaps *tmp_caps, *dma_caps, *va_caps;
   GArray *formats = NULL;
   gboolean ret = FALSE;
   GstVaapiProfile profile;
@@ -398,11 +400,6 @@ ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
   if (profile == GST_VAAPI_PROFILE_UNKNOWN)
     return TRUE;
 
-  out_caps = gst_caps_from_string (GST_VAAPI_MAKE_SURFACE_CAPS ";"
-      GST_VAAPI_MAKE_DMABUF_CAPS);
-  if (!out_caps)
-    goto failed_create_va_caps;
-
   formats = gst_vaapi_encoder_get_surface_formats (encode->encoder, profile);
   if (!formats)
     goto failed_get_formats;
@@ -411,8 +408,26 @@ ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
   if (!raw_caps)
     goto failed_create_raw_caps;
 
-  out_caps = gst_caps_make_writable (out_caps);
-  gst_caps_append (out_caps, gst_caps_copy (raw_caps));
+  va_caps = gst_caps_from_string (GST_VAAPI_MAKE_SURFACE_CAPS);
+  g_assert (va_caps);
+  tmp_caps = gst_caps_copy (raw_caps);
+  gst_caps_set_features_simple (tmp_caps,
+      gst_caps_features_from_string (GST_CAPS_FEATURE_MEMORY_VAAPI_SURFACE));
+  out_caps = gst_caps_intersect (tmp_caps, va_caps);
+  gst_caps_unref (va_caps);
+  gst_caps_unref (tmp_caps);
+
+  dma_caps = gst_caps_from_string (GST_VAAPI_MAKE_DMABUF_CAPS);
+  g_assert (dma_caps);
+  tmp_caps = gst_caps_copy (raw_caps);
+  gst_caps_set_features_simple (tmp_caps,
+      gst_caps_features_from_string (GST_CAPS_FEATURE_MEMORY_DMABUF));
+  gst_caps_append (out_caps, gst_caps_intersect (tmp_caps, dma_caps));
+  gst_caps_unref (dma_caps);
+  gst_caps_unref (tmp_caps);
+
+  gst_caps_append (out_caps, raw_caps);
+  raw_caps = NULL;
 
   size = gst_caps_get_size (out_caps);
   for (i = 0; i < size; i++) {
@@ -438,11 +453,6 @@ bail:
     g_array_unref (formats);
   return ret;
 
-failed_create_va_caps:
-  {
-    GST_WARNING_OBJECT (encode, "failed to create VA/GL sink caps");
-    return FALSE;
-  }
 failed_get_formats:
   {
     GST_WARNING_OBJECT (encode, "failed to get allowed surface formats");
