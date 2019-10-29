@@ -30,6 +30,7 @@
 #include <gst/video/gstvideoencoder.h>
 #include <gst/video/gstvideosink.h>
 #include <gst/vaapi/gstvaapidisplay.h>
+#include "gstvaapipad.h"
 
 G_BEGIN_DECLS
 
