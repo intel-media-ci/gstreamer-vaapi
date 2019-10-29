@@ -140,12 +140,12 @@ gst_vaapiencode_mpeg2_class_init (GstVaapiEncodeMpeg2Class * klass)
       GST_PLUGIN_DESC, "Guangxin Xu <guangxin.xu@intel.com>");
 
   /* sink pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapiencode_mpeg2_sink_factory);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &gst_vaapiencode_mpeg2_sink_factory, GST_TYPE_VAAPI_SINK_PAD);
 
   /* src pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapiencode_mpeg2_src_factory);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &gst_vaapiencode_mpeg2_src_factory, GST_TYPE_VAAPI_SRC_PAD);
 
   encoder_class = g_type_class_ref (GST_TYPE_VAAPI_ENCODER_MPEG2);
   g_assert (encoder_class);

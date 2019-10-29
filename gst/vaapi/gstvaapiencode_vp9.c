@@ -138,11 +138,13 @@ gst_vaapiencode_vp9_class_init (GstVaapiEncodeVP9Class * klass)
 
   /* sink pad */
   gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&gst_vaapiencode_vp9_sink_factory));
+      gst_pad_template_new_from_static_pad_template_with_gtype
+      (&gst_vaapiencode_vp9_sink_factory, GST_TYPE_VAAPI_SINK_PAD));
 
   /* src pad */
   gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&gst_vaapiencode_vp9_src_factory));
+      gst_pad_template_new_from_static_pad_template_with_gtype
+      (&gst_vaapiencode_vp9_src_factory, GST_TYPE_VAAPI_SRC_PAD));
 
   encoder_class = g_type_class_ref (GST_TYPE_VAAPI_ENCODER_VP9);
   g_assert (encoder_class);

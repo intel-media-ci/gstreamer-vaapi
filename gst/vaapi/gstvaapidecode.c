@@ -1522,14 +1522,14 @@ gst_vaapidecode_class_init (GstVaapiDecodeClass * klass)
 
   /* sink pad */
   caps = gst_caps_from_string (map->caps_str);
-  pad_template = gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
-      caps);
+  pad_template = gst_pad_template_new_with_gtype ("sink", GST_PAD_SINK,
+      GST_PAD_ALWAYS, caps, GST_TYPE_VAAPI_SINK_PAD);
   gst_caps_unref (caps);
   gst_element_class_add_pad_template (element_class, pad_template);
 
   /* src pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapidecode_src_factory);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &gst_vaapidecode_src_factory, GST_TYPE_VAAPI_SRC_PAD);
 }
 
 static void
