@@ -2146,12 +2146,12 @@ gst_vaapipostproc_class_init (GstVaapiPostprocClass * klass)
       GST_PLUGIN_DESC, "Gwenole Beauchesne <gwenole.beauchesne@intel.com>");
 
   /* sink pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapipostproc_sink_factory);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &gst_vaapipostproc_sink_factory, GST_TYPE_VAAPI_SINK_PAD);
 
   /* src pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapipostproc_src_factory);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &gst_vaapipostproc_src_factory, GST_TYPE_VAAPI_SRC_PAD);
 
   /**
    * GstVaapiPostproc:deinterlace-mode:

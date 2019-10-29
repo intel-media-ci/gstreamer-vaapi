@@ -568,12 +568,12 @@ gst_vaapiencode_h264_class_init (GstVaapiEncodeH264Class * klass)
       GST_PLUGIN_DESC, "Wind Yuan <feng.yuan@intel.com>");
 
   /* sink pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapiencode_h264_sink_factory);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &gst_vaapiencode_h264_sink_factory, GST_TYPE_VAAPI_SINK_PAD);
 
   /* src pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapiencode_h264_src_factory);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &gst_vaapiencode_h264_src_factory, GST_TYPE_VAAPI_SRC_PAD);
 
   encoder_class = g_type_class_ref (GST_TYPE_VAAPI_ENCODER_H264);
   g_assert (encoder_class);

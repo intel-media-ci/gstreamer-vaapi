@@ -399,12 +399,12 @@ gst_vaapiencode_h265_class_init (GstVaapiEncodeH265Class * klass)
       "Sreerenj Balachandran <sreerenj.balachandran@intel.com>");
 
   /* sink pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapiencode_h265_sink_factory);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &gst_vaapiencode_h265_sink_factory, GST_TYPE_VAAPI_SINK_PAD);
 
   /* src pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapiencode_h265_src_factory);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &gst_vaapiencode_h265_src_factory, GST_TYPE_VAAPI_SRC_PAD);
 
   encoder_class = g_type_class_ref (GST_TYPE_VAAPI_ENCODER_H265);
   g_assert (encoder_class);
