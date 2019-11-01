@@ -174,13 +174,13 @@ static GArray *gst_vaapi_video_formats_map;
 static inline gboolean
 va_format_is_rgb (const VAImageFormat * va_format)
 {
-  return va_format->depth != 0;
+  return va_format->fourcc && va_format->depth != 0;
 }
 
 static inline gboolean
 va_format_is_yuv (const VAImageFormat * va_format)
 {
-  return va_format->depth == 0;
+  return va_format->fourcc && va_format->depth == 0;
 }
 
 static inline gboolean
