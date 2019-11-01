@@ -1007,3 +1007,30 @@ gst_vaapi_codecs_has_codec (GArray * codecs, GstVaapiCodec codec)
   }
   return FALSE;
 }
+
+/**
+ * gst_vaapi_video_format_caps_str:
+ * @feature: a #gchar of feature name
+ *
+ * Returns: #gchar of the video caps string.
+ **/
+gchar *
+gst_vaapi_video_format_caps_str (gchar * feature)
+{
+  if (feature)
+    return g_strdup_printf ("video/x-raw(%s), "
+        "format = (string) { %s }, "
+        "width = %s , "
+        "height = %s , "
+        "framerate = %s", feature,
+        gst_vaapi_video_format_get_all_formats_str (), GST_VIDEO_SIZE_RANGE,
+        GST_VIDEO_SIZE_RANGE, GST_VIDEO_FPS_RANGE);
+  else
+    return g_strdup_printf ("video/x-raw, "
+        "format = (string) { %s }, "
+        "width = %s , "
+        "height = %s , "
+        "framerate = %s",
+        gst_vaapi_video_format_get_all_formats_str (), GST_VIDEO_SIZE_RANGE,
+        GST_VIDEO_SIZE_RANGE, GST_VIDEO_FPS_RANGE);
+}

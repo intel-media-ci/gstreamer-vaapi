@@ -50,26 +50,8 @@ GST_DEBUG_CATEGORY_STATIC (gst_vaapi_jpeg_encode_debug);
   "image/jpeg"
 
 /* *INDENT-OFF* */
-static const char gst_vaapiencode_jpeg_sink_caps_str[] =
-  GST_VAAPI_MAKE_SURFACE_CAPS ", "
-  GST_CAPS_INTERLACED_FALSE "; "
-  GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS_ALL) ", "
-  GST_CAPS_INTERLACED_FALSE ";"
-  GST_VAAPI_MAKE_DMABUF_CAPS ","
-  GST_CAPS_INTERLACED_FALSE;
-/* *INDENT-ON* */
-
-/* *INDENT-OFF* */
 static const char gst_vaapiencode_jpeg_src_caps_str[] =
   GST_CODEC_CAPS;
-/* *INDENT-ON* */
-
-/* *INDENT-OFF* */
-static GstStaticPadTemplate gst_vaapiencode_jpeg_sink_factory =
-  GST_STATIC_PAD_TEMPLATE ("sink",
-      GST_PAD_SINK,
-      GST_PAD_ALWAYS,
-      GST_STATIC_CAPS (gst_vaapiencode_jpeg_sink_caps_str));
 /* *INDENT-ON* */
 
 /* *INDENT-OFF* */
@@ -119,6 +101,9 @@ gst_vaapiencode_jpeg_class_init (GstVaapiEncodeJpegClass * klass)
   GstElementClass *const element_class = GST_ELEMENT_CLASS (klass);
   GstVaapiEncodeClass *const encode_class = GST_VAAPIENCODE_CLASS (klass);
   gpointer encoder_class;
+  GstPadTemplate *sink_templ;
+  GstCaps *sink_caps;
+  gchar *sink_caps_str;
 
   GST_DEBUG_CATEGORY_INIT (gst_vaapi_jpeg_encode_debug,
       GST_PLUGIN_NAME, 0, GST_PLUGIN_DESC);
@@ -137,8 +122,19 @@ gst_vaapiencode_jpeg_class_init (GstVaapiEncodeJpegClass * klass)
       "Sreerenj Balachandran <sreerenj.balachandran@intel.com>");
 
   /* sink pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapiencode_jpeg_sink_factory);
+  sink_caps_str =
+      g_strconcat (gst_vaapi_video_format_caps_str
+      (GST_CAPS_FEATURE_MEMORY_VAAPI_SURFACE), ", ",
+      GST_CAPS_INTERLACED_FALSE, "; ",
+      gst_vaapi_video_format_caps_str (NULL), ", ",
+      GST_CAPS_INTERLACED_FALSE, ";",
+      GST_VAAPI_MAKE_DMABUF_CAPS, ",", GST_CAPS_INTERLACED_FALSE, NULL);
+  sink_caps = gst_caps_from_string (sink_caps_str);
+  sink_templ =
+      gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS, sink_caps);
+  gst_element_class_add_pad_template (element_class, sink_templ);
+  gst_caps_unref (sink_caps);
+  g_free (sink_caps_str);
 
   /* src pad */
   gst_element_class_add_static_pad_template (element_class,

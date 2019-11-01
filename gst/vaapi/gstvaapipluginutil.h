@@ -152,4 +152,8 @@ G_GNUC_INTERNAL
 gboolean
 gst_vaapi_codecs_has_codec (GArray * codecs, GstVaapiCodec codec);
 
+G_GNUC_INTERNAL
+gchar *
+gst_vaapi_video_format_caps_str (gchar * feature);
+
 #endif /* GST_VAAPI_PLUGIN_UTIL_H */
