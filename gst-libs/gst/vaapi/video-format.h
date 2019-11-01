@@ -62,6 +62,9 @@ gst_vaapi_video_format_get_best_native (GstVideoFormat format);
 gboolean
 gst_vaapi_video_format_create_map (VAImageFormat * formats, guint n);
 
+const gchar *
+gst_vaapi_video_format_get_all_formats_str (void);
+
 G_END_DECLS
 
 #endif /* GST_VAAPI_VIDEO_FORMAT_H */

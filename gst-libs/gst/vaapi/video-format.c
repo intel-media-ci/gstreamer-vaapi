@@ -171,6 +171,9 @@ static const GstVideoFormatMap gst_vaapi_video_default_formats[] = {
 
 static GArray *gst_vaapi_video_formats_map;
 
+/* The string include all supported formats */
+static char *gst_vaapi_video_formats_str;
+
 static inline gboolean
 va_format_is_rgb (const VAImageFormat * va_format)
 {
@@ -547,6 +550,24 @@ video_format_create_map_once (gpointer data)
 
   g_array_sort (array, video_format_compare_by_score);
   gst_vaapi_video_formats_map = array;
+
+  for (i = 0; i < gst_vaapi_video_formats_map->len; i++) {
+    gchar *str, *tmp;
+    entry = &g_array_index (gst_vaapi_video_formats_map, GstVideoFormatMap, i);
+    str = g_strdup_printf (i ==
+        gst_vaapi_video_formats_map->len - 1 ? "%s" : "%s, ",
+        gst_video_format_to_string (entry->format));
+    if (gst_vaapi_video_formats_str == NULL) {
+      gst_vaapi_video_formats_str = str;
+      continue;
+    }
+
+    tmp = gst_vaapi_video_formats_str;
+    gst_vaapi_video_formats_str = g_strconcat (tmp, str, NULL);
+    g_free (str);
+    g_free (tmp);
+  }
+
   return array;
 }
 
@@ -566,4 +587,15 @@ gst_vaapi_video_format_create_map (VAImageFormat * formats, guint n)
   g_once (&once, video_format_create_map_once, &data);
 
   return once.retval != NULL;
+}
+
+/**
+ * gst_vaapi_video_format_get_all_formats_str:
+ *
+ * Return: The all supported video format in a string.
+ **/
+const gchar *
+gst_vaapi_video_format_get_all_formats_str (void)
+{
+  return gst_vaapi_video_formats_str;
 }
