@@ -76,21 +76,6 @@ static const char gst_vaapidecode_sink_caps_str[] =
     GST_CAPS_CODEC("video/x-vp8")
     GST_CAPS_CODEC("video/x-vp9")
     ;
-
-static const char gst_vaapidecode_src_caps_str[] =
-    GST_VAAPI_MAKE_SURFACE_CAPS ";"
-#if (USE_GLX || USE_EGL)
-    GST_VAAPI_MAKE_GLTEXUPLOAD_CAPS ";"
-#endif
-    GST_VIDEO_CAPS_MAKE("{ NV12, I420, YV12, YUY2, UYVY, Y210, P010_10LE, AYUV, Y410, Y444 }") ";"
-    GST_VAAPI_MAKE_DMABUF_CAPS;
-
-static GstStaticPadTemplate gst_vaapidecode_src_factory =
-    GST_STATIC_PAD_TEMPLATE(
-        "src",
-        GST_PAD_SRC,
-        GST_PAD_ALWAYS,
-        GST_STATIC_CAPS(gst_vaapidecode_src_caps_str));
 /* *INDENT-ON* */
 
 typedef struct _GstVaapiDecoderMap GstVaapiDecoderMap;
@@ -1460,6 +1445,7 @@ gst_vaapidecode_class_init (GstVaapiDecodeClass * klass)
   GstVaapiDecoderMap *map;
   gchar *name, *longname, *description;
   GstCaps *caps;
+  gchar *src_caps_str;
 
   GST_DEBUG_CATEGORY_INIT (gst_debug_vaapidecode,
       GST_PLUGIN_NAME, 0, GST_PLUGIN_DESC);
@@ -1523,9 +1509,20 @@ gst_vaapidecode_class_init (GstVaapiDecodeClass * klass)
   gst_caps_unref (caps);
   gst_element_class_add_pad_template (element_class, pad_template);
 
-  /* src pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapidecode_src_factory);
+  src_caps_str = g_strconcat (gst_vaapi_video_format_caps_str
+      (GST_CAPS_FEATURE_MEMORY_VAAPI_SURFACE), ";",
+#if (USE_GLX || USE_EGL)
+      GST_VAAPI_MAKE_GLTEXUPLOAD_CAPS, ";",
+#endif
+      gst_vaapi_video_format_caps_str (NULL), ";",
+      GST_VAAPI_MAKE_DMABUF_CAPS, NULL);
+
+  caps = gst_caps_from_string (src_caps_str);
+  pad_template =
+      gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS, caps);
+  gst_element_class_add_pad_template (element_class, pad_template);
+  gst_caps_unref (caps);
+  g_free (src_caps_str);
 }
 
 static void
