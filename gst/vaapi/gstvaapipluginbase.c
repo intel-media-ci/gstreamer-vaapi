@@ -40,6 +40,51 @@ GST_DEBUG_CATEGORY_STATIC (CAT_PERFORMANCE);
 
 #define BUFFER_POOL_SINK_MIN_BUFFERS 2
 
+G_DEFINE_TYPE (GstVaapiPadPriv, gst_vaapi_pad_priv, GST_TYPE_OBJECT);
+
+static void
+gst_vaapi_pad_priv_reset (GstVaapiPadPriv * priv)
+{
+  gst_caps_replace (&priv->caps, NULL);
+  gst_video_info_init (&priv->info);
+
+  g_clear_object (&priv->buffer_pool);
+  g_clear_object (&priv->allocator);
+
+  priv->buffer_size = 0;
+  priv->caps_is_raw = FALSE;
+
+  g_clear_object (&priv->other_allocator);
+  priv->can_dmabuf = FALSE;
+}
+
+static void
+gst_vaapi_pad_priv_finalize (GObject * obj)
+{
+  gst_vaapi_pad_priv_reset (GST_VAAPI_PAD_PRIV (obj));
+  G_OBJECT_CLASS (gst_vaapi_pad_priv_parent_class)->finalize (obj);
+}
+
+static void
+gst_vaapi_pad_priv_class_init (GstVaapiPadPrivClass * klass)
+{
+  G_OBJECT_CLASS (klass)->finalize = gst_vaapi_pad_priv_finalize;
+}
+
+static void
+gst_vaapi_pad_priv_init (GstVaapiPadPriv * priv)
+{
+  gst_video_info_init (&priv->info);
+  priv->caps = NULL;
+  priv->buffer_pool = NULL;
+  priv->allocator = NULL;
+  priv->buffer_size = 0;
+  priv->caps_is_raw = FALSE;
+
+  priv->can_dmabuf = FALSE;
+  priv->other_allocator = NULL;
+}
+
 /* GstVideoContext interface */
 static void
 plugin_set_display (GstVaapiPluginBase * plugin, GstVaapiDisplay * display)
@@ -125,7 +170,8 @@ static gboolean
 plugin_update_sinkpad_info_from_buffer (GstVaapiPluginBase * plugin,
     GstBuffer * buf)
 {
-  GstVideoInfo *const vip = &plugin->sinkpad_info;
+  GstVaapiPadPriv *sinkpriv = GST_VAAPI_PLUGIN_BASE_SINK_PAD_PRIV (plugin);
+  GstVideoInfo *const vip = &sinkpriv->info;
   GstVideoMeta *vmeta;
   guint i;
 
@@ -165,7 +211,8 @@ static gboolean
 plugin_bind_dma_to_vaapi_buffer (GstVaapiPluginBase * plugin,
     GstBuffer * inbuf, GstBuffer * outbuf)
 {
-  GstVideoInfo *const vip = &plugin->sinkpad_info;
+  GstVaapiPadPriv *sinkpriv = GST_VAAPI_PLUGIN_BASE_SINK_PAD_PRIV (plugin);
+  GstVideoInfo *const vip = &sinkpriv->info;
   GstVaapiVideoMeta *meta;
   GstVaapiSurface *surface;
   GstVaapiSurfaceProxy *proxy;
@@ -228,9 +275,40 @@ plugin_reset_texture_map (GstVaapiPluginBase * plugin)
     gst_vaapi_display_reset_texture_map (plugin->display);
 }
 
+static void
+ensure_vaapi_pad_priv (GstVaapiPluginBase * plugin, GstPad * pad)
+{
+  GstVaapiPadPriv *priv = GST_VAAPI_PLUGIN_BASE_PAD_PRIV (pad);
+
+  if (!priv) {
+    priv = g_object_new (GST_TYPE_VAAPI_PAD_PRIV, NULL);
+    gst_pad_set_element_private (pad, priv);
+  }
+}
+
+static void
+gst_vaapi_plugin_base_pad_added (GstElement * element, GstPad * pad)
+{
+  ensure_vaapi_pad_priv (GST_VAAPI_PLUGIN_BASE (element), pad);
+}
+
+static void
+gst_vaapi_plugin_base_pad_removed (GstElement * element, GstPad * pad)
+{
+  GstVaapiPadPriv *priv = GST_VAAPI_PLUGIN_BASE_PAD_PRIV (pad);
+
+  gst_pad_set_element_private (pad, NULL);
+  gst_object_unref (priv);
+}
+
 void
 gst_vaapi_plugin_base_class_init (GstVaapiPluginBaseClass * klass)
 {
+  GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
+
+  element_class->pad_added = gst_vaapi_plugin_base_pad_added;
+  element_class->pad_removed = gst_vaapi_plugin_base_pad_removed;
+
   klass->has_interface = default_has_interface;
   klass->display_changed = default_display_changed;
 }
@@ -245,12 +323,16 @@ gst_vaapi_plugin_base_init (GstVaapiPluginBase * plugin,
 
   /* sink pad */
   plugin->sinkpad = gst_element_get_static_pad (GST_ELEMENT (plugin), "sink");
-  gst_video_info_init (&plugin->sinkpad_info);
+
+  if (plugin->sinkpad)
+    ensure_vaapi_pad_priv (plugin, plugin->sinkpad);
 
   /* src pad */
   if (!(GST_OBJECT_FLAGS (plugin) & GST_ELEMENT_FLAG_SINK))
     plugin->srcpad = gst_element_get_static_pad (GST_ELEMENT (plugin), "src");
-  gst_video_info_init (&plugin->srcpad_info);
+
+  if (plugin->srcpad)
+    ensure_vaapi_pad_priv (plugin, plugin->srcpad);
 
   plugin->enable_direct_rendering =
       (g_getenv ("GST_VAAPI_ENABLE_DIRECT_RENDERING") != NULL);
@@ -282,6 +364,14 @@ gst_vaapi_plugin_base_open (GstVaapiPluginBase * plugin)
   return TRUE;
 }
 
+static gboolean
+gst_vaapi_pad_priv_reset_func (GstElement * element, GstPad * pad,
+    gpointer user_data)
+{
+  gst_vaapi_pad_priv_reset (GST_VAAPI_PLUGIN_BASE_PAD_PRIV (pad));
+  return TRUE;
+}
+
 /**
  * gst_vaapi_plugin_base_close:
  * @plugin: a #GstVaapiPluginBase
@@ -300,19 +390,10 @@ gst_vaapi_plugin_base_close (GstVaapiPluginBase * plugin)
   gst_object_replace (&plugin->gl_display, NULL);
   gst_object_replace (&plugin->gl_other_context, NULL);
 
-  gst_caps_replace (&plugin->sinkpad_caps, NULL);
-  gst_video_info_init (&plugin->sinkpad_info);
-
-  g_clear_object (&plugin->sinkpad_buffer_pool);
-  g_clear_object (&plugin->srcpad_buffer_pool);
-
-  g_clear_object (&plugin->sinkpad_allocator);
-  g_clear_object (&plugin->srcpad_allocator);
-  g_clear_object (&plugin->other_srcpad_allocator);
-
-  gst_caps_replace (&plugin->srcpad_caps, NULL);
-  gst_video_info_init (&plugin->srcpad_info);
   gst_caps_replace (&plugin->allowed_raw_caps, NULL);
+
+  gst_element_foreach_pad (GST_ELEMENT (plugin),
+      gst_vaapi_pad_priv_reset_func, NULL);
 }
 
 /**
@@ -438,6 +519,7 @@ static gboolean
 ensure_sinkpad_allocator (GstVaapiPluginBase * plugin, GstCaps * caps,
     guint * size)
 {
+  GstVaapiPadPriv *sinkpriv = GST_VAAPI_PLUGIN_BASE_SINK_PAD_PRIV (plugin);
   GstVideoInfo vinfo;
   const GstVideoInfo *image_info;
   GstVaapiImageUsageFlags usage_flag =
@@ -446,7 +528,7 @@ ensure_sinkpad_allocator (GstVaapiPluginBase * plugin, GstCaps * caps,
   if (!gst_video_info_from_caps (&vinfo, caps))
     goto error_invalid_caps;
 
-  if (!reset_allocator (plugin->sinkpad_allocator, &vinfo))
+  if (!reset_allocator (sinkpriv->allocator, &vinfo))
     goto bail;
 
   /* enable direct upload if upstream requests raw video */
@@ -454,15 +536,14 @@ ensure_sinkpad_allocator (GstVaapiPluginBase * plugin, GstCaps * caps,
     usage_flag = GST_VAAPI_IMAGE_USAGE_FLAG_DIRECT_UPLOAD;
     GST_INFO_OBJECT (plugin, "enabling direct upload in sink allocator");
   }
-  plugin->sinkpad_allocator =
+  sinkpriv->allocator =
       gst_vaapi_video_allocator_new (plugin->display, &vinfo, 0, usage_flag);
 
 bail:
-  if (!plugin->sinkpad_allocator)
+  if (!sinkpriv->allocator)
     goto error_create_allocator;
 
-  image_info =
-      gst_allocator_get_vaapi_video_info (plugin->sinkpad_allocator, NULL);
+  image_info = gst_allocator_get_vaapi_video_info (sinkpriv->allocator, NULL);
   g_assert (image_info);        /* allocator ought set its image info */
 
   /* update the size with the one generated by the allocator */
@@ -532,25 +613,25 @@ static gboolean
 ensure_srcpad_allocator (GstVaapiPluginBase * plugin, GstVideoInfo * vinfo,
     GstCaps * caps)
 {
+  GstVaapiPadPriv *srcpriv = GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV (plugin);
   const GstVideoInfo *image_info;
 
-  if (!reset_allocator (plugin->srcpad_allocator, vinfo))
+  if (!reset_allocator (srcpriv->allocator, vinfo))
     goto valid_allocator;
 
-  plugin->srcpad_allocator = NULL;
+  srcpriv->allocator = NULL;
   if (caps && gst_caps_is_video_raw (caps)) {
     GstAllocator *allocator = create_dmabuf_srcpad_allocator (plugin, vinfo,
-        !plugin->srcpad_can_dmabuf);
-    plugin->srcpad_allocator = allocator;
+        !srcpriv->can_dmabuf);
+    srcpriv->allocator = allocator;
   } else if (caps && gst_vaapi_caps_feature_contains (caps,
           GST_VAAPI_CAPS_FEATURE_DMABUF)) {
-    plugin->srcpad_allocator =
-        create_dmabuf_srcpad_allocator (plugin, vinfo, FALSE);
-    if (!plugin->srcpad_allocator)
+    srcpriv->allocator = create_dmabuf_srcpad_allocator (plugin, vinfo, FALSE);
+    if (!srcpriv->allocator)
       goto error_create_allocator;
   }
 
-  if (!plugin->srcpad_allocator) {
+  if (!srcpriv->allocator) {
     GstVaapiImageUsageFlags usage_flag =
         GST_VAAPI_IMAGE_USAGE_FLAG_NATIVE_FORMATS;
 
@@ -559,16 +640,15 @@ ensure_srcpad_allocator (GstVaapiPluginBase * plugin, GstVideoInfo * vinfo,
       GST_INFO_OBJECT (plugin, "enabling direct rendering in source allocator");
     }
 
-    plugin->srcpad_allocator =
+    srcpriv->allocator =
         gst_vaapi_video_allocator_new (plugin->display, vinfo, 0, usage_flag);
   }
 
-  if (!plugin->srcpad_allocator)
+  if (!srcpriv->allocator)
     goto error_create_allocator;
 
 valid_allocator:
-  image_info =
-      gst_allocator_get_vaapi_video_info (plugin->srcpad_allocator, NULL);
+  image_info = gst_allocator_get_vaapi_video_info (srcpriv->allocator, NULL);
   g_assert (image_info);        /* both allocators ought set its image
                                  * info */
 
@@ -580,15 +660,14 @@ valid_allocator:
      * different from the "negotiation caps". In this case, we should
      * indicate the allocator to store the negotiation caps since they
      * are the one should be used for frame mapping with GstVideoMeta */
-    gboolean different_caps = plugin->srcpad_caps &&
-        !gst_caps_is_strictly_equal (plugin->srcpad_caps, caps);
+    gboolean different_caps = srcpriv->caps &&
+        !gst_caps_is_strictly_equal (srcpriv->caps, caps);
     const GstVideoInfo *previous_negotiated =
-        gst_allocator_get_vaapi_negotiated_video_info
-        (plugin->srcpad_allocator);
+        gst_allocator_get_vaapi_negotiated_video_info (srcpriv->allocator);
 
     if (different_caps) {
       guint i;
-      GstVideoInfo vi = plugin->srcpad_info;
+      GstVideoInfo vi = srcpriv->info;
 
       /* update the planes and the size with the allocator image/surface
        * info, but not the resolution */
@@ -599,11 +678,9 @@ valid_allocator:
             GST_VIDEO_INFO_PLANE_STRIDE (image_info, i);
       }
       GST_VIDEO_INFO_SIZE (&vi) = GST_VIDEO_INFO_SIZE (image_info);
-      gst_allocator_set_vaapi_negotiated_video_info (plugin->srcpad_allocator,
-          &vi);
+      gst_allocator_set_vaapi_negotiated_video_info (srcpriv->allocator, &vi);
     } else if (previous_negotiated) {
-      gst_allocator_set_vaapi_negotiated_video_info (plugin->srcpad_allocator,
-          NULL);
+      gst_allocator_set_vaapi_negotiated_video_info (srcpriv->allocator, NULL);
     }
   }
   return TRUE;
@@ -703,6 +780,7 @@ error_pool_config:
 static gboolean
 ensure_sinkpad_buffer_pool (GstVaapiPluginBase * plugin, GstCaps * caps)
 {
+  GstVaapiPadPriv *sinkpriv = GST_VAAPI_PLUGIN_BASE_SINK_PAD_PRIV (plugin);
   GstBufferPool *pool;
   guint size;
 
@@ -713,13 +791,13 @@ ensure_sinkpad_buffer_pool (GstVaapiPluginBase * plugin, GstCaps * caps)
   if (!gst_vaapi_plugin_base_ensure_display (plugin))
     return FALSE;
 
-  if (plugin->sinkpad_buffer_pool) {
-    if (gst_vaapi_buffer_pool_caps_is_equal (plugin->sinkpad_buffer_pool, caps))
+  if (sinkpriv->buffer_pool) {
+    if (gst_vaapi_buffer_pool_caps_is_equal (sinkpriv->buffer_pool, caps))
       return TRUE;
-    gst_buffer_pool_set_active (plugin->sinkpad_buffer_pool, FALSE);
-    g_clear_object (&plugin->sinkpad_buffer_pool);
-    g_clear_object (&plugin->sinkpad_allocator);
-    plugin->sinkpad_buffer_size = 0;
+    gst_buffer_pool_set_active (sinkpriv->buffer_pool, FALSE);
+    g_clear_object (&sinkpriv->buffer_pool);
+    g_clear_object (&sinkpriv->allocator);
+    sinkpriv->buffer_size = 0;
   }
 
   if (!ensure_sinkpad_allocator (plugin, caps, &size))
@@ -728,12 +806,12 @@ ensure_sinkpad_buffer_pool (GstVaapiPluginBase * plugin, GstCaps * caps)
   pool =
       gst_vaapi_plugin_base_create_pool (plugin, caps, size,
       BUFFER_POOL_SINK_MIN_BUFFERS, 0,
-      GST_VAAPI_VIDEO_BUFFER_POOL_OPTION_VIDEO_META, plugin->sinkpad_allocator);
+      GST_VAAPI_VIDEO_BUFFER_POOL_OPTION_VIDEO_META, sinkpriv->allocator);
   if (!pool)
     return FALSE;
 
-  plugin->sinkpad_buffer_pool = pool;
-  plugin->sinkpad_buffer_size = size;
+  sinkpriv->buffer_pool = pool;
+  sinkpriv->buffer_size = size;
   return TRUE;
 }
 
@@ -752,28 +830,41 @@ gboolean
 gst_vaapi_plugin_base_set_caps (GstVaapiPluginBase * plugin, GstCaps * incaps,
     GstCaps * outcaps)
 {
-  if (incaps && incaps != plugin->sinkpad_caps) {
-    if (!gst_video_info_from_caps (&plugin->sinkpad_info, incaps))
-      return FALSE;
-    gst_caps_replace (&plugin->sinkpad_caps, incaps);
-    plugin->sinkpad_caps_is_raw = !gst_caps_has_vaapi_surface (incaps);
+  GstVaapiPadPriv *sinkpriv = NULL;
+  GstVaapiPadPriv *srcpriv = NULL;
+
+  if (incaps) {
+    g_return_val_if_fail (plugin->sinkpad != NULL, FALSE);
+    sinkpriv = GST_VAAPI_PLUGIN_BASE_SINK_PAD_PRIV (plugin);
   }
 
-  if (outcaps && outcaps != plugin->srcpad_caps) {
-    if (!gst_video_info_from_caps (&plugin->srcpad_info, outcaps))
+  if (incaps && incaps != sinkpriv->caps) {
+    if (!gst_video_info_from_caps (&sinkpriv->info, incaps))
       return FALSE;
-    if (plugin->srcpad_buffer_pool
-        && !gst_vaapi_buffer_pool_caps_is_equal (plugin->srcpad_buffer_pool,
+    gst_caps_replace (&sinkpriv->caps, incaps);
+    sinkpriv->caps_is_raw = !gst_caps_has_vaapi_surface (incaps);
+  }
+
+  if (outcaps) {
+    g_return_val_if_fail (plugin->srcpad != NULL, FALSE);
+    srcpriv = GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV (plugin);
+  }
+
+  if (outcaps && outcaps != srcpriv->caps) {
+    if (!gst_video_info_from_caps (&srcpriv->info, outcaps))
+      return FALSE;
+    if (srcpriv->buffer_pool
+        && !gst_vaapi_buffer_pool_caps_is_equal (srcpriv->buffer_pool,
             outcaps)) {
-      gst_buffer_pool_set_active (plugin->srcpad_buffer_pool, FALSE);
-      g_clear_object (&plugin->srcpad_buffer_pool);
-      g_clear_object (&plugin->srcpad_allocator);
+      gst_buffer_pool_set_active (srcpriv->buffer_pool, FALSE);
+      g_clear_object (&srcpriv->buffer_pool);
+      g_clear_object (&srcpriv->allocator);
       plugin_reset_texture_map (plugin);
     }
-    gst_caps_replace (&plugin->srcpad_caps, outcaps);
+    gst_caps_replace (&srcpriv->caps, outcaps);
   }
 
-  if (!ensure_sinkpad_buffer_pool (plugin, plugin->sinkpad_caps))
+  if (incaps && !ensure_sinkpad_buffer_pool (plugin, sinkpriv->caps))
     return FALSE;
   return TRUE;
 }
@@ -791,6 +882,7 @@ gboolean
 gst_vaapi_plugin_base_propose_allocation (GstVaapiPluginBase * plugin,
     GstQuery * query)
 {
+  GstVaapiPadPriv *sinkpriv = GST_VAAPI_PLUGIN_BASE_SINK_PAD_PRIV (plugin);
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
   gboolean need_pool;
@@ -806,8 +898,7 @@ gst_vaapi_plugin_base_propose_allocation (GstVaapiPluginBase * plugin,
   if (need_pool) {
     pool = gst_vaapi_plugin_base_create_pool (plugin, caps, size,
         BUFFER_POOL_SINK_MIN_BUFFERS, 0,
-        GST_VAAPI_VIDEO_BUFFER_POOL_OPTION_VIDEO_META,
-        plugin->sinkpad_allocator);
+        GST_VAAPI_VIDEO_BUFFER_POOL_OPTION_VIDEO_META, sinkpriv->allocator);
     if (!pool)
       return FALSE;
   }
@@ -825,7 +916,7 @@ gst_vaapi_plugin_base_propose_allocation (GstVaapiPluginBase * plugin,
     gst_query_add_allocation_param (query, allocator, NULL);
     gst_object_unref (allocator);
   }
-  gst_query_add_allocation_param (query, plugin->sinkpad_allocator, NULL);
+  gst_query_add_allocation_param (query, sinkpriv->allocator, NULL);
 
   gst_query_add_allocation_pool (query, pool, size,
       BUFFER_POOL_SINK_MIN_BUFFERS, 0);
@@ -859,6 +950,7 @@ gboolean
 gst_vaapi_plugin_base_decide_allocation (GstVaapiPluginBase * plugin,
     GstQuery * query)
 {
+  GstVaapiPadPriv *srcpriv = GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV (plugin);
   GstCaps *caps = NULL;
   GstBufferPool *pool;
   GstVideoInfo vi;
@@ -928,10 +1020,10 @@ gst_vaapi_plugin_base_decide_allocation (GstVaapiPluginBase * plugin,
      * new buffer */
     if (i == 0
         && g_strcmp0 (allocator->mem_type, GST_VAAPI_VIDEO_MEMORY_NAME) != 0) {
-      if (plugin->other_srcpad_allocator)
-        gst_object_unref (plugin->other_srcpad_allocator);
-      plugin->other_srcpad_allocator = allocator;
-      plugin->other_allocator_params = params;
+      if (srcpriv->other_allocator)
+        gst_object_unref (srcpriv->other_allocator);
+      srcpriv->other_allocator = allocator;
+      srcpriv->other_allocator_params = params;
       continue;
     }
 
@@ -939,9 +1031,9 @@ gst_vaapi_plugin_base_decide_allocation (GstVaapiPluginBase * plugin,
       GST_DEBUG_OBJECT (plugin, "found vaapi allocator in query %"
           GST_PTR_FORMAT, allocator);
       index_allocator = i;
-      if (plugin->srcpad_allocator)
-        gst_object_unref (plugin->srcpad_allocator);
-      plugin->srcpad_allocator = allocator;
+      if (srcpriv->allocator)
+        gst_object_unref (srcpriv->allocator);
+      srcpriv->allocator = allocator;
       break;
     }
     gst_object_unref (allocator);
@@ -978,7 +1070,7 @@ gst_vaapi_plugin_base_decide_allocation (GstVaapiPluginBase * plugin,
     size = GST_VIDEO_INFO_SIZE (&vi);   /* size might be updated by
                                          * allocator */
     pool = gst_vaapi_plugin_base_create_pool (plugin, caps, size, min, max,
-        pool_options, plugin->srcpad_allocator);
+        pool_options, srcpriv->allocator);
     if (!pool)
       goto error;
   }
@@ -989,19 +1081,19 @@ gst_vaapi_plugin_base_decide_allocation (GstVaapiPluginBase * plugin,
     gst_query_add_allocation_pool (query, pool, size, min, max);
 
   /* allocator might be updated by ensure_srcpad_allocator() */
-  if (plugin->srcpad_allocator) {
+  if (srcpriv->allocator) {
     if (index_allocator > 0) {
       gst_query_set_nth_allocation_param (query, index_allocator,
-          plugin->srcpad_allocator, NULL);
+          srcpriv->allocator, NULL);
     } else {
       GST_DEBUG_OBJECT (plugin, "adding allocator in query %" GST_PTR_FORMAT,
-          plugin->srcpad_allocator);
-      gst_query_add_allocation_param (query, plugin->srcpad_allocator, NULL);
+          srcpriv->allocator);
+      gst_query_add_allocation_param (query, srcpriv->allocator, NULL);
     }
   }
 
-  g_clear_object (&plugin->srcpad_buffer_pool);
-  plugin->srcpad_buffer_pool = pool;
+  g_clear_object (&srcpriv->buffer_pool);
+  srcpriv->buffer_pool = pool;
 
   /* if downstream doesn't support GstVideoMeta, and the negotiated
    * caps are raw video, and the used allocator is the VA-API one, we
@@ -1051,6 +1143,7 @@ GstFlowReturn
 gst_vaapi_plugin_base_get_input_buffer (GstVaapiPluginBase * plugin,
     GstBuffer * inbuf, GstBuffer ** outbuf_ptr)
 {
+  GstVaapiPadPriv *sinkpriv = GST_VAAPI_PLUGIN_BASE_SINK_PAD_PRIV (plugin);
   GstVaapiVideoMeta *meta;
   GstBuffer *outbuf;
   GstVideoFrame src_frame, out_frame;
@@ -1065,18 +1158,18 @@ gst_vaapi_plugin_base_get_input_buffer (GstVaapiPluginBase * plugin,
     return GST_FLOW_OK;
   }
 
-  if (!plugin->sinkpad_caps_is_raw)
+  if (!sinkpriv->caps_is_raw)
     goto error_invalid_buffer;
 
-  if (!plugin->sinkpad_buffer_pool)
+  if (!sinkpriv->buffer_pool)
     goto error_no_pool;
 
-  if (!gst_buffer_pool_is_active (plugin->sinkpad_buffer_pool) &&
-      !gst_buffer_pool_set_active (plugin->sinkpad_buffer_pool, TRUE))
+  if (!gst_buffer_pool_is_active (sinkpriv->buffer_pool) &&
+      !gst_buffer_pool_set_active (sinkpriv->buffer_pool, TRUE))
     goto error_active_pool;
 
   outbuf = NULL;
-  if (gst_buffer_pool_acquire_buffer (plugin->sinkpad_buffer_pool,
+  if (gst_buffer_pool_acquire_buffer (sinkpriv->buffer_pool,
           &outbuf, NULL) != GST_FLOW_OK)
     goto error_create_buffer;
 
@@ -1086,12 +1179,10 @@ gst_vaapi_plugin_base_get_input_buffer (GstVaapiPluginBase * plugin,
     goto done;
   }
 
-  if (!gst_video_frame_map (&src_frame, &plugin->sinkpad_info, inbuf,
-          GST_MAP_READ))
+  if (!gst_video_frame_map (&src_frame, &sinkpriv->info, inbuf, GST_MAP_READ))
     goto error_map_src_buffer;
 
-  if (!gst_video_frame_map (&out_frame, &plugin->sinkpad_info, outbuf,
-          GST_MAP_WRITE))
+  if (!gst_video_frame_map (&out_frame, &sinkpriv->info, outbuf, GST_MAP_WRITE))
     goto error_map_dst_buffer;
 
   success = gst_video_frame_copy (&out_frame, &src_frame);
@@ -1419,9 +1510,10 @@ gst_vaapi_plugin_base_set_srcpad_can_dmabuf (GstVaapiPluginBase * plugin,
     GstObject * object)
 {
 #if USE_EGL && USE_GST_GL_HELPERS
+  GstVaapiPadPriv *srcpriv = GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV (plugin);
   GstGLContext *const gl_context = GST_GL_CONTEXT (object);
 
-  plugin->srcpad_can_dmabuf =
+  srcpriv->can_dmabuf =
       (!(gst_gl_context_get_gl_api (gl_context) & GST_GL_API_GLES1)
       && gst_gl_context_check_feature (gl_context,
           "EGL_EXT_image_dma_buf_import"));
@@ -1458,6 +1550,7 @@ gboolean
 gst_vaapi_plugin_copy_va_buffer (GstVaapiPluginBase * plugin,
     GstBuffer * inbuf, GstBuffer * outbuf)
 {
+  GstVaapiPadPriv *srcpriv = GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV (plugin);
   GstVideoMeta *vmeta;
   GstVideoFrame src_frame, dst_frame;
   gboolean success;
@@ -1473,11 +1566,9 @@ gst_vaapi_plugin_copy_va_buffer (GstVaapiPluginBase * plugin,
   _init_performance_debug ();
   GST_CAT_INFO (CAT_PERFORMANCE, "copying VA buffer to system memory buffer");
 
-  if (!gst_video_frame_map (&src_frame, &plugin->srcpad_info, inbuf,
-          GST_MAP_READ))
+  if (!gst_video_frame_map (&src_frame, &srcpriv->info, inbuf, GST_MAP_READ))
     return FALSE;
-  if (!gst_video_frame_map (&dst_frame, &plugin->srcpad_info, outbuf,
-          GST_MAP_WRITE)) {
+  if (!gst_video_frame_map (&dst_frame, &srcpriv->info, outbuf, GST_MAP_WRITE)) {
     gst_video_frame_unmap (&src_frame);
     return FALSE;
   }

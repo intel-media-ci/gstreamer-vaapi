@@ -35,6 +35,8 @@ G_BEGIN_DECLS
 
 typedef struct _GstVaapiPluginBase GstVaapiPluginBase;
 typedef struct _GstVaapiPluginBaseClass GstVaapiPluginBaseClass;
+typedef struct _GstVaapiPadPriv GstVaapiPadPriv;
+typedef struct _GstVaapiPadPrivClass GstVaapiPadPrivClass;
 
 #define GST_VAAPI_PLUGIN_BASE(plugin) \
   ((GstVaapiPluginBase *)(plugin))
@@ -71,28 +73,37 @@ typedef struct _GstVaapiPluginBaseClass GstVaapiPluginBaseClass;
 #define GST_VAAPI_PLUGIN_BASE_INIT_INTERFACES \
   gst_vaapi_plugin_base_init_interfaces(g_define_type_id);
 
+#define GST_VAAPI_PLUGIN_BASE_PAD_PRIV(pad) \
+  (GST_VAAPI_PAD_PRIV(gst_pad_get_element_private(pad)))
+
 #define GST_VAAPI_PLUGIN_BASE_SINK_PAD(plugin) \
   (GST_VAAPI_PLUGIN_BASE(plugin)->sinkpad)
+#define GST_VAAPI_PLUGIN_BASE_SINK_PAD_PRIV(plugin) \
+  (GST_VAAPI_PLUGIN_BASE_PAD_PRIV(GST_VAAPI_PLUGIN_BASE_SINK_PAD(plugin)))
 #define GST_VAAPI_PLUGIN_BASE_SINK_PAD_CAPS(plugin) \
-  (GST_VAAPI_PLUGIN_BASE(plugin)->sinkpad_caps)
+  (GST_VAAPI_PLUGIN_BASE_SINK_PAD_PRIV(plugin)->caps)
 #define GST_VAAPI_PLUGIN_BASE_SINK_PAD_INFO(plugin) \
-  (&GST_VAAPI_PLUGIN_BASE(plugin)->sinkpad_info)
+  (&GST_VAAPI_PLUGIN_BASE_SINK_PAD_PRIV(plugin)->info)
+
 #define GST_VAAPI_PLUGIN_BASE_SRC_PAD(plugin) \
   (GST_VAAPI_PLUGIN_BASE(plugin)->srcpad)
+#define GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV(plugin) \
+  (GST_VAAPI_PLUGIN_BASE_PAD_PRIV(GST_VAAPI_PLUGIN_BASE_SRC_PAD(plugin)))
 #define GST_VAAPI_PLUGIN_BASE_SRC_PAD_CAPS(plugin) \
-  (GST_VAAPI_PLUGIN_BASE(plugin)->srcpad_caps)
+  (GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV(plugin)->caps)
 #define GST_VAAPI_PLUGIN_BASE_SRC_PAD_INFO(plugin) \
-  (&GST_VAAPI_PLUGIN_BASE(plugin)->srcpad_info)
+  (&GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV(plugin)->info)
 #define GST_VAAPI_PLUGIN_BASE_SRC_PAD_CAN_DMABUF(plugin) \
-  (GST_VAAPI_PLUGIN_BASE(plugin)->srcpad_can_dmabuf)
+  (GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV(plugin)->can_dmabuf)
 #define GST_VAAPI_PLUGIN_BASE_SRC_PAD_BUFFER_POOL(plugin) \
-  (GST_VAAPI_PLUGIN_BASE(plugin)->srcpad_buffer_pool)
+  (GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV(plugin)->buffer_pool)
 #define GST_VAAPI_PLUGIN_BASE_SRC_PAD_ALLOCATOR(plugin) \
-  (GST_VAAPI_PLUGIN_BASE(plugin)->srcpad_allocator)
+  (GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV(plugin)->allocator)
 #define GST_VAAPI_PLUGIN_BASE_OTHER_ALLOCATOR(plugin) \
-  (GST_VAAPI_PLUGIN_BASE(plugin)->other_srcpad_allocator)
+  (GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV(plugin)->other_allocator)
 #define GST_VAAPI_PLUGIN_BASE_OTHER_ALLOCATOR_PARAMS(plugin) \
-  (GST_VAAPI_PLUGIN_BASE(plugin)->other_allocator_params)
+  (GST_VAAPI_PLUGIN_BASE_SRC_PAD_PRIV(plugin)->other_allocator_params)
+
 #define GST_VAAPI_PLUGIN_BASE_COPY_OUTPUT_FRAME(plugin) \
   (GST_VAAPI_PLUGIN_BASE(plugin)->copy_output_frame)
 
@@ -116,6 +127,36 @@ typedef struct _GstVaapiPluginBaseClass GstVaapiPluginBaseClass;
     GST_ELEMENT_CLASS (parent_class)->set_context (element, context); \
   }
 
+#define GST_TYPE_VAAPI_PAD_PRIV \
+  (gst_vaapi_pad_priv_get_type ())
+#define GST_VAAPI_PAD_PRIV(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_VAAPI_PAD_PRIV,GstVaapiPadPriv))
+
+struct _GstVaapiPadPriv
+{
+  GstObject parent_instance;
+
+  GstCaps *caps;
+  GstVideoInfo info;
+  GstBufferPool *buffer_pool;
+  GstAllocator *allocator;
+  guint buffer_size;
+  gboolean caps_is_raw;
+
+  gboolean can_dmabuf;
+
+  GstAllocator *other_allocator;
+  GstAllocationParams other_allocator_params;
+};
+
+struct _GstVaapiPadPrivClass
+{
+  GstObjectClass parent_class;
+};
+
+GType
+gst_vaapi_pad_priv_get_type (void) G_GNUC_CONST;
+
 struct _GstVaapiPluginBase
 {
   /*< private >*/
@@ -131,16 +172,7 @@ struct _GstVaapiPluginBase
   GstDebugCategory *debug_category;
 
   GstPad *sinkpad;
-  GstCaps *sinkpad_caps;
-  gboolean sinkpad_caps_is_raw;
-  GstVideoInfo sinkpad_info;
-  GstBufferPool *sinkpad_buffer_pool;
-  guint sinkpad_buffer_size;
-
   GstPad *srcpad;
-  GstCaps *srcpad_caps;
-  GstVideoInfo srcpad_info;
-  GstBufferPool *srcpad_buffer_pool;
 
   GstVaapiDisplay *display;
   GstVaapiDisplayType display_type;
@@ -152,14 +184,8 @@ struct _GstVaapiPluginBase
   GstObject *gl_other_context;
 
   GstCaps *allowed_raw_caps;
-  GstAllocator *sinkpad_allocator;
-  GstAllocator *srcpad_allocator;
-  gboolean srcpad_can_dmabuf;
 
   gboolean enable_direct_rendering;
-
-  GstAllocator *other_srcpad_allocator;
-  GstAllocationParams other_allocator_params;
   gboolean copy_output_frame;
 };
 
