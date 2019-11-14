@@ -167,6 +167,7 @@ struct _GstVaapiPluginBase
     GstVideoEncoder encoder;
     GstBaseTransform transform;
     GstVideoSink sink;
+    GstVideoAggregator aggregator;
   } parent_instance;
 
   GstDebugCategory *debug_category;
@@ -199,6 +200,7 @@ struct _GstVaapiPluginBaseClass
     GstVideoEncoderClass encoder;
     GstBaseTransformClass transform;
     GstVideoSinkClass sink;
+    GstVideoAggregatorClass aggregator;
   } parent_class;
 
   gboolean  (*has_interface) (GstVaapiPluginBase * plugin, GType type);
@@ -256,8 +258,18 @@ gst_vaapi_plugin_base_set_caps (GstVaapiPluginBase * plugin, GstCaps * incaps,
 
 G_GNUC_INTERNAL
 gboolean
+gst_vaapi_plugin_base_pad_set_caps (GstVaapiPluginBase *plugin,
+    GstPad * sinkpad, GstCaps * incaps, GstPad * srcpad, GstCaps * outcaps);
+
+G_GNUC_INTERNAL
+gboolean
 gst_vaapi_plugin_base_propose_allocation (GstVaapiPluginBase * plugin,
     GstQuery * query);
+
+G_GNUC_INTERNAL
+gboolean
+gst_vaapi_plugin_base_pad_propose_allocation (GstVaapiPluginBase * plugin,
+    GstPad * sinkpad, GstQuery * query);
 
 G_GNUC_INTERNAL
 gboolean
@@ -268,6 +280,11 @@ G_GNUC_INTERNAL
 GstFlowReturn
 gst_vaapi_plugin_base_get_input_buffer (GstVaapiPluginBase * plugin,
     GstBuffer * inbuf, GstBuffer ** outbuf_ptr);
+
+G_GNUC_INTERNAL
+GstFlowReturn
+gst_vaapi_plugin_base_pad_get_input_buffer (GstVaapiPluginBase * plugin,
+    GstPad * sinkpad, GstBuffer * inbuf, GstBuffer ** outbuf_ptr);
 
 G_GNUC_INTERNAL
 void
