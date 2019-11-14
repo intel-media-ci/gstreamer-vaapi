@@ -24,6 +24,7 @@
 
 #include "gstcompat.h"
 #include "gstvaapidecode.h"
+#include "gstvaapioverlay.h"
 #include "gstvaapipostproc.h"
 #include "gstvaapisink.h"
 #include "gstvaapidecodebin.h"
@@ -213,6 +214,9 @@ plugin_init (GstPlugin * plugin)
     gst_vaapidecode_register (plugin, decoders);
     g_array_unref (decoders);
   }
+
+  gst_element_register (plugin, "vaapioverlay",
+      GST_RANK_PRIMARY, GST_TYPE_VAAPI_OVERLAY);
 
   gst_element_register (plugin, "vaapipostproc",
       GST_RANK_PRIMARY, GST_TYPE_VAAPIPOSTPROC);
