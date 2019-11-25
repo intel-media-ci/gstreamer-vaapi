@@ -264,11 +264,11 @@ generate_scaled_qm (GstJpegQuantTables * quant_tables,
 
   for (i = 0; i < GST_JPEG_MAX_QUANT_ELEMENTS; i++) {
     /* Luma QM */
-    qt_val = (quant_tables->quant_tables[0].quant_table[i] * nm_quality) / 100;
+    qt_val = (quant_tables->quant_tables[0].quant_table[i] * nm_quality + 50) / 100;
     scaled_quant_tables->quant_tables[0].quant_table[i] =
         CLAMP (qt_val, 1, 255);
     /* Chroma QM */
-    qt_val = (quant_tables->quant_tables[1].quant_table[i] * nm_quality) / 100;
+    qt_val = (quant_tables->quant_tables[1].quant_table[i] * nm_quality + 50) / 100;
     scaled_quant_tables->quant_tables[1].quant_table[i] =
         CLAMP (qt_val, 1, 255);
   }
