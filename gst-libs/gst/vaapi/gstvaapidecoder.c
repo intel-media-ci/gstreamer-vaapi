@@ -1005,8 +1005,11 @@ gst_vaapi_decoder_push_frame (GstVaapiDecoder * decoder,
 GstVaapiDecoderStatus
 gst_vaapi_decoder_check_status (GstVaapiDecoder * decoder)
 {
+  /* Check whether there are still surfaces left in context. For
+     the context created without surfaces, always get -1, and
+     we do not care about this. */
   if (decoder->context &&
-      gst_vaapi_context_get_surface_count (decoder->context) < 1)
+      gst_vaapi_context_get_surface_count (decoder->context) == 0)
     return GST_VAAPI_DECODER_STATUS_ERROR_NO_SURFACE;
   return GST_VAAPI_DECODER_STATUS_SUCCESS;
 }

@@ -187,6 +187,31 @@ context_ensure_surfaces (GstVaapiContext * context)
 }
 
 static gboolean
+context_create_surface_pool (GstVaapiContext * context)
+{
+  const GstVaapiContextInfo *const cip = &context->info;
+  GstVaapiDisplay *const display = GST_VAAPI_CONTEXT_DISPLAY (context);
+  GstVideoFormat format;
+
+  format = get_preferred_format (context);
+  if (format == GST_VIDEO_FORMAT_UNKNOWN) {
+    GST_INFO ("Cannot create a compatible surfaces pool for chroma type %d",
+        cip->chroma_type);
+    return FALSE;
+  }
+
+  context->surfaces_pool = gst_vaapi_surface_pool_new_with_chroma_type (display,
+      cip->chroma_type, cip->width, cip->height);
+  if (!context->surfaces_pool) {
+    GST_WARNING ("Falied to create context's surface pool");
+    return FALSE;
+  }
+
+  gst_vaapi_video_pool_set_capacity (context->surfaces_pool, 0);
+  return TRUE;
+}
+
+static gboolean
 context_create_surfaces (GstVaapiContext * context)
 {
   const GstVaapiContextInfo *const cip = &context->info;
@@ -224,6 +249,29 @@ context_create (GstVaapiContext * context)
   gboolean success = FALSE;
   guint i;
 
+#if SUPPORT_SURFACELESS_CONTEXT
+  if (cip->usage == GST_VAAPI_CONTEXT_USAGE_DECODE) {
+    /* try surfaceless context creation, if fail, fallback */
+    if (!context->surfaces_pool)
+      context_create_surface_pool (context);
+
+    if (context->surfaces_pool) {
+      GST_VAAPI_DISPLAY_LOCK (display);
+      status = vaCreateContext (GST_VAAPI_DISPLAY_VADISPLAY (display),
+          context->va_config, cip->width, cip->height, VA_PROGRESSIVE,
+          NULL, 0, &context_id);
+      GST_VAAPI_DISPLAY_UNLOCK (display);
+      if (vaapi_check_status (status, "vaCreateContext()")) {
+        GST_INFO ("Created surfaceless context 0x%08x", context_id);
+        GST_VAAPI_CONTEXT_ID (context) = context_id;
+        success = TRUE;
+        context->surfaces = NULL;
+        goto cleanup;
+      }
+    }
+  }
+#endif
+
   if (!context->surfaces && !context_create_surfaces (context))
     goto cleanup;
 
@@ -240,6 +288,7 @@ context_create (GstVaapiContext * context)
     surface_id = GST_VAAPI_SURFACE_ID (surface);
     g_array_append_val (surfaces, surface_id);
   }
+
   g_assert (surfaces->len == context->surfaces->len);
 
   GST_VAAPI_DISPLAY_LOCK (display);
@@ -517,6 +566,8 @@ gst_vaapi_context_reset (GstVaapiContext * context,
   gboolean reset_surfaces = FALSE, reset_config = FALSE;
   gboolean grow_surfaces = FALSE;
   GstVaapiChromaType chroma_type;
+  gboolean is_surfaceless = (context->surfaces == NULL
+      && new_cip->usage == GST_VAAPI_CONTEXT_USAGE_DECODE);
 
   if (new_cip->profile == GST_VAAPI_PROFILE_UNKNOWN
       || new_cip->entrypoint == GST_VAAPI_ENTRYPOINT_INVALID)
@@ -566,9 +617,16 @@ gst_vaapi_context_reset (GstVaapiContext * context,
 
   if (reset_config && !(config_create (context) && context_create (context)))
     return FALSE;
-  if (reset_surfaces && !context_create_surfaces (context))
-    return FALSE;
-  else if (grow_surfaces && !context_ensure_surfaces (context))
+  if (reset_surfaces) {
+    if (is_surfaceless && context_create_surface_pool (context)) {
+      context->surfaces = NULL;
+      return TRUE;
+    }
+
+    if (!context_create_surfaces (context))
+      return FALSE;
+  } else if (grow_surfaces && !is_surfaceless
+      && !context_ensure_surfaces (context))
     return FALSE;
   return TRUE;
 }
@@ -620,14 +678,21 @@ gst_vaapi_context_get_surface_proxy (GstVaapiContext * context)
  *
  * Retrieves the number of free surfaces left in the pool.
  *
- * Return value: the number of free surfaces available in the pool
+ * Return value: the number of free surfaces available in the pool,
+ *  for surfaceless context, we just return -1.
  */
-guint
+gint
 gst_vaapi_context_get_surface_count (GstVaapiContext * context)
 {
   g_return_val_if_fail (context != NULL, 0);
 
-  return gst_vaapi_video_pool_get_size (context->surfaces_pool);
+  /* For surfaceless context */
+  if (context->surfaces == NULL) {
+    g_assert (gst_vaapi_video_pool_get_capacity (context->surfaces_pool) == 0);
+    return -1;
+  }
+
+  return (gint) gst_vaapi_video_pool_get_size (context->surfaces_pool);
 }
 
 /**

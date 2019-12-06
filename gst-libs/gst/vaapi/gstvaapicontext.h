@@ -140,7 +140,7 @@ GstVaapiSurfaceProxy *
 gst_vaapi_context_get_surface_proxy (GstVaapiContext * context);
 
 G_GNUC_INTERNAL
-guint
+gint
 gst_vaapi_context_get_surface_count (GstVaapiContext * context);
 
 G_GNUC_INTERNAL
