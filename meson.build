@@ -148,6 +148,7 @@ cdata.set10('HAVE_XKBLIB', cc.has_header('X11/XKBlib.h', dependencies: x11_dep))
 cdata.set10('HAVE_XRANDR', xrandr_dep.found())
 cdata.set10('HAVE_XRENDER', xrender_dep.found())
 cdata.set10('USE_GST_GL_HELPERS', gstgl_dep.found())
+cdata.set10('SUPPORT_SURFACELESS_CONTEXT', get_option('surfaceless_context'))
 cdata.set('USE_GLES_VERSION_MASK', GLES_VERSION_MASK)
 
 api_version = '1.0'
