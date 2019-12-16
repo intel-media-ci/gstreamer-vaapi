@@ -716,18 +716,10 @@ static void
 init_context_info (GstVaapiEncoder * encoder, GstVaapiContextInfo * cip,
     GstVaapiProfile profile)
 {
-  const GstVaapiEncoderClassData *const cdata =
-      GST_VAAPI_ENCODER_GET_CLASS (encoder)->class_data;
-
   cip->usage = GST_VAAPI_CONTEXT_USAGE_ENCODE;
   cip->profile = profile;
-  if (cdata->codec == GST_VAAPI_CODEC_JPEG) {
-    cip->entrypoint = GST_VAAPI_ENTRYPOINT_PICTURE_ENCODE;
-  } else {
-    if (cip->entrypoint != GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP &&
-        cip->entrypoint != GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_FEI)
-      cip->entrypoint = GST_VAAPI_ENTRYPOINT_SLICE_ENCODE;
-  }
+  cip->entrypoint =
+      gst_vaapi_encoder_get_entrypoint (encoder, encoder->profile);
   cip->chroma_type = get_default_chroma_type (encoder, cip);
   cip->width = 0;
   cip->height = 0;
@@ -1504,8 +1496,12 @@ get_profile_surface_formats (GstVaapiEncoder * encoder, GstVaapiProfile profile)
   GArray *formats;
 
   ctxt = create_test_context_config (encoder, profile);
-  if (!ctxt)
+  if (!ctxt) {
+    GST_WARNING ("failed to create test context for profile %s %s",
+        gst_vaapi_profile_get_media_type_name (profile),
+        gst_vaapi_profile_get_name (profile));
     return NULL;
+  }
   formats = gst_vaapi_context_get_surface_formats (ctxt);
   gst_vaapi_context_unref (ctxt);
   return formats;
@@ -1682,6 +1678,41 @@ gst_vaapi_encoder_get_profile (GstVaapiEncoder * encoder)
   g_return_val_if_fail (encoder, GST_VAAPI_PROFILE_UNKNOWN);
 
   return encoder->profile;
+}
+
+/* Get the entrypoint based on the tune option. */
+GstVaapiEntrypoint
+gst_vaapi_encoder_get_entrypoint (GstVaapiEncoder * encoder,
+    GstVaapiProfile profile)
+{
+  /* XXX: The profile may not be the same with encoder->profile */
+
+  g_return_val_if_fail (encoder, GST_VAAPI_ENTRYPOINT_INVALID);
+  g_return_val_if_fail (profile, GST_VAAPI_ENTRYPOINT_INVALID);
+
+  if (profile == GST_VAAPI_PROFILE_JPEG_BASELINE)
+    return GST_VAAPI_ENTRYPOINT_PICTURE_ENCODE;
+
+  if (GST_VAAPI_ENCODER_TUNE (encoder) == GST_VAAPI_ENCODER_TUNE_LOW_POWER) {
+    if (gst_vaapi_display_has_encoder (GST_VAAPI_ENCODER_DISPLAY (encoder),
+            profile, GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP))
+      return GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP;
+  } else {
+    /* If not set, choose the available one */
+    if (gst_vaapi_display_has_encoder (GST_VAAPI_ENCODER_DISPLAY (encoder),
+            profile, GST_VAAPI_ENTRYPOINT_SLICE_ENCODE))
+      return GST_VAAPI_ENTRYPOINT_SLICE_ENCODE;
+
+    if (gst_vaapi_display_has_encoder (GST_VAAPI_ENCODER_DISPLAY (encoder),
+            profile, GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP))
+      return GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP;
+  }
+
+  GST_WARNING ("failed to find %s entrypoint for profile %s",
+      GST_VAAPI_ENCODER_TUNE (encoder) == GST_VAAPI_ENCODER_TUNE_LOW_POWER ?
+      "the low-power" : "an available",
+      gst_vaapi_profile_get_va_name (profile));
+  return GST_VAAPI_ENTRYPOINT_INVALID;
 }
 
 /** Returns a GType for the #GstVaapiEncoderTune set */
