@@ -467,14 +467,6 @@ ensure_tuning (GstVaapiFeiEncH264 * feienc)
     case GST_VAAPI_ENCODER_TUNE_HIGH_COMPRESSION:
       success = ensure_tuning_high_compression (feienc);
       break;
-    case GST_VAAPI_ENCODER_TUNE_LOW_POWER:
-      /* Set low-power encode entry point. If hardware doesn't have
-       * support, it will fail in ensure_hw_profile() in later stage.
-       * So not duplicating the profile/entrypont query mechanism
-       * here as a part of optimization */
-      feienc->entrypoint = GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP;
-      success = TRUE;
-      break;
     default:
       success = TRUE;
       break;
@@ -1268,6 +1260,11 @@ ensure_profile_and_level (GstVaapiFeiEncH264 * feienc)
     GST_WARNING ("Failed to set some of the tuning option as expected! ");
 
   if (!ensure_profile (feienc) || !ensure_profile_limits (feienc))
+    return GST_VAAPI_ENCODER_STATUS_ERROR_UNSUPPORTED_PROFILE;
+
+  feienc->entrypoint =
+      gst_vaapi_encoder_get_entrypoint (GST_VAAPI_ENCODER_CAST (feienc));
+  if (feienc->entrypoint == GST_VAAPI_ENTRYPOINT_INVALID)
     return GST_VAAPI_ENCODER_STATUS_ERROR_UNSUPPORTED_PROFILE;
 
   /* Check HW constraints */

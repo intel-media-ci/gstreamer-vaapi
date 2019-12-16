@@ -527,6 +527,9 @@ ensure_profiles (GstVaapiDisplay * display)
         case GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_FEI:
           g_array_append_val (priv->encoders, config);
           break;
+        default:
+          GST_INFO ("get one invalid entrypoint for profile %s",
+              string_of_VAProfile (profiles[i]));
       }
     }
   }

@@ -187,6 +187,9 @@ gst_vaapi_encoder_get_surface_formats (GstVaapiEncoder * encoder,
 GstVaapiProfile
 gst_vaapi_encoder_get_profile (GstVaapiEncoder * encoder);
 
+GstVaapiEntrypoint
+gst_vaapi_encoder_get_entrypoint (GstVaapiEncoder * encoder);
+
 G_END_DECLS
 
 #endif /* GST_VAAPI_ENCODER_H */
