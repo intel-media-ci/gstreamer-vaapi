@@ -427,8 +427,8 @@ update_ref_list (GstVaapiEncoderVP9 * encoder, GstVaapiEncPicture * picture,
       gst_vaapi_surface_proxy_unref (ref);
       break;
     case GST_VAAPI_ENCODER_VP9_REF_PIC_MODE_1:
-      gst_vaapi_surface_proxy_replace (&encoder->ref_list[encoder->
-              ref_list_idx], ref);
+      gst_vaapi_surface_proxy_replace (&encoder->
+          ref_list[encoder->ref_list_idx], ref);
       gst_vaapi_surface_proxy_unref (ref);
       encoder->ref_list_idx = (encoder->ref_list_idx + 1) % GST_VP9_REF_FRAMES;
       break;
@@ -526,8 +526,13 @@ gst_vaapi_encoder_vp9_reconfigure (GstVaapiEncoder * base_encoder)
   if (status != GST_VAAPI_ENCODER_STATUS_SUCCESS)
     return status;
 
-  if (GST_VAAPI_ENCODER_TUNE (encoder) == GST_VAAPI_ENCODER_TUNE_LOW_POWER)
-    encoder->entrypoint = GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP;
+  encoder->entrypoint =
+      gst_vaapi_encoder_get_entrypoint (base_encoder, encoder->profile);
+  if (encoder->entrypoint == GST_VAAPI_ENTRYPOINT_INVALID) {
+    GST_WARNING ("Cannot find valid entrypoint");
+    return GST_VAAPI_ENCODER_STATUS_ERROR_UNSUPPORTED_PROFILE;
+  }
+
   ensure_control_rate_params (encoder);
   return set_context_info (base_encoder);
 }
