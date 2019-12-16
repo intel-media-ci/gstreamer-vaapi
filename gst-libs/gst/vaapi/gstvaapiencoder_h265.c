@@ -1082,10 +1082,6 @@ ensure_tuning (GstVaapiEncoderH265 * encoder)
     case GST_VAAPI_ENCODER_TUNE_HIGH_COMPRESSION:
       success = ensure_tuning_high_compression (encoder);
       break;
-    case GST_VAAPI_ENCODER_TUNE_LOW_POWER:
-      encoder->entrypoint = GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP;
-      success = TRUE;
-      break;
     default:
       success = TRUE;
       break;
@@ -2039,6 +2035,14 @@ ensure_profile_tier_level (GstVaapiEncoderH265 * encoder)
   if (!ensure_profile (encoder) || !ensure_profile_limits (encoder))
     return GST_VAAPI_ENCODER_STATUS_ERROR_UNSUPPORTED_PROFILE;
 
+  encoder->entrypoint =
+      gst_vaapi_encoder_get_entrypoint (GST_VAAPI_ENCODER_CAST (encoder),
+      encoder->profile);
+  if (encoder->entrypoint == GST_VAAPI_ENTRYPOINT_INVALID) {
+    GST_WARNING ("Cannot find valid entrypoint");
+    return GST_VAAPI_ENCODER_STATUS_ERROR_UNSUPPORTED_PROFILE;
+  }
+
   /* Check HW constraints */
   if (!ensure_hw_profile_limits (encoder))
     return GST_VAAPI_ENCODER_STATUS_ERROR_UNSUPPORTED_PROFILE;
@@ -2540,6 +2544,7 @@ set_context_info (GstVaapiEncoder * base_encoder)
   base_encoder->codedbuf_size += GST_ROUND_UP_16 (vip->width) *
       GST_ROUND_UP_16 (vip->height) * 3 / 2;
 
+  base_encoder->context_info.profile = base_encoder->profile;
   base_encoder->context_info.entrypoint = encoder->entrypoint;
 
   return GST_VAAPI_ENCODER_STATUS_SUCCESS;
