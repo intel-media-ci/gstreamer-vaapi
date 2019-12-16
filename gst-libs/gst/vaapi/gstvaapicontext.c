@@ -409,9 +409,11 @@ gst_vaapi_context_new (GstVaapiDisplay * display,
 {
   GstVaapiContext *context;
 
-  g_return_val_if_fail (cip->profile, NULL);
-  g_return_val_if_fail (cip->entrypoint, NULL);
   g_return_val_if_fail (display, NULL);
+
+  if (cip->profile == GST_VAAPI_PROFILE_UNKNOWN
+      || cip->entrypoint == GST_VAAPI_ENTRYPOINT_INVALID)
+    return NULL;
 
   context = g_slice_new (GstVaapiContext);
   if (!context)
@@ -469,6 +471,10 @@ gst_vaapi_context_reset (GstVaapiContext * context,
   gboolean reset_surfaces = FALSE, reset_config = FALSE;
   gboolean grow_surfaces = FALSE;
   GstVaapiChromaType chroma_type;
+
+  if (cip->profile == GST_VAAPI_PROFILE_UNKNOWN
+      || cip->entrypoint == GST_VAAPI_ENTRYPOINT_INVALID)
+    return FALSE;
 
   chroma_type = new_cip->chroma_type ? new_cip->chroma_type :
       DEFAULT_CHROMA_TYPE;
