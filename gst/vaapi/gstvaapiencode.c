@@ -451,11 +451,13 @@ bail:
 
 failed_get_formats:
   {
+    gst_caps_replace (&encode->allowed_sinkpad_caps, gst_caps_new_empty ());
     GST_WARNING_OBJECT (encode, "failed to get allowed surface formats");
     goto bail;
   }
 failed_create_raw_caps:
   {
+    gst_caps_replace (&encode->allowed_sinkpad_caps, gst_caps_new_empty ());
     GST_WARNING_OBJECT (encode, "failed to create raw sink caps");
     goto bail;
   }
