@@ -1554,61 +1554,51 @@ merge_profile_surface_attributes (GstVaapiEncoder * encoder,
 /**
  * gst_vaapi_encoder_get_surface_attributres:
  * @encoder: a #GstVaapiEncoder instances
- * @profile: a #GstVaapiProfile to test
+ * @profiles: a #GArray of #GstVaapiProfile to be test
  * @min_width (out): the minimal surface width
  * @min_height (out): the minimal surface height
  * @max_width (out): the maximal surface width
  * @max_height (out): the maximal surface height
  *
- * Fetches the valid surface's attributes for @profile if it is valid,
- * Otherwise, it collects surface's attributes for all profiles which
- * belong to the current encoder's codec.
+ * Fetches the valid surface's attributes for the specified @profiles
  *
  * Returns: a #GArray of valid formats we get or %NULL if failed.
  **/
 GArray *
 gst_vaapi_encoder_get_surface_attributes (GstVaapiEncoder * encoder,
-    GstVaapiProfile profile, gint * min_width, gint * min_height,
+    GArray * profiles, gint * min_width, gint * min_height,
     gint * max_width, gint * max_height)
 {
-  const GstVaapiEncoderClassData *const cdata =
-      GST_VAAPI_ENCODER_GET_CLASS (encoder)->class_data;
   GstVaapiConfigSurfaceAttributes attribs = {
     G_MAXINT, G_MAXINT, 1, 1, 0, NULL
   };
-  GArray *profiles;
+  GstVaapiProfile profile;
   guint i;
 
-  if (profile != GST_VAAPI_PROFILE_UNKNOWN) {
-    if (get_profile_surface_attributes (encoder, profile, &attribs))
-      goto success;
-    return NULL;
-  }
-
-  /* no specific context neither specific profile, let's iterate among
-   * the codec's profiles */
-  profiles = gst_vaapi_display_get_encode_profiles (encoder->display);
-  if (!profiles)
-    return NULL;
+  g_return_val_if_fail (encoder != NULL, NULL);
+  g_return_val_if_fail (profiles != NULL, NULL);
+  g_return_val_if_fail (min_width != NULL, NULL);
+  g_return_val_if_fail (min_height != NULL, NULL);
+  g_return_val_if_fail (max_width != NULL, NULL);
+  g_return_val_if_fail (max_height != NULL, NULL);
 
   attribs.formats = g_array_new (FALSE, FALSE, sizeof (GstVideoFormat));
   for (i = 0; i < profiles->len; i++) {
     profile = g_array_index (profiles, GstVaapiProfile, i);
-    if (gst_vaapi_profile_get_codec (profile) == cdata->codec) {
-      if (!merge_profile_surface_attributes (encoder, profile, &attribs)) {
-        GST_INFO ("Can not get surface formats for profile %s",
-            gst_vaapi_profile_get_va_name (profile));
-        continue;
-      }
+    g_assert (profile != GST_VAAPI_PROFILE_UNKNOWN);
+    GST_LOG ("Detect input formats of profile %s",
+        gst_vaapi_profile_get_va_name (profile));
+
+    if (!merge_profile_surface_attributes (encoder, profile, &attribs)) {
+      GST_INFO ("Can not get surface formats for profile %s",
+          gst_vaapi_profile_get_va_name (profile));
+      continue;
     }
   }
-
-  g_array_unref (profiles);
 
   if (!attribs.formats)
     return NULL;
 
-success:
   if (min_width)
     *min_width = attribs.min_width;
   if (min_height)
@@ -1762,6 +1752,25 @@ gst_vaapi_encoder_get_entrypoint (GstVaapiEncoder * encoder,
   }
 
   return GST_VAAPI_ENTRYPOINT_INVALID;
+}
+
+/**
+ * gst_vaapi_encoder_get_codec:
+ * @encoder: a #GstVaapiEncoder
+ *
+ * Get the #GstVaapiCodec of current encoder.
+ *
+ * Returns: The #GstVaapiCodec.
+ **/
+GstVaapiCodec
+gst_vaapi_encoder_get_codec (GstVaapiEncoder * encoder)
+{
+  const GstVaapiEncoderClassData *cdata;
+
+  g_return_val_if_fail (encoder != NULL, 0);
+
+  cdata = GST_VAAPI_ENCODER_GET_CLASS (encoder)->class_data;
+  return cdata->codec;
 }
 
 /** Returns a GType for the #GstVaapiEncoderTune set */

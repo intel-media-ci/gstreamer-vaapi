@@ -1007,3 +1007,64 @@ gst_vaapi_codecs_has_codec (GArray * codecs, GstVaapiCodec codec)
   }
   return FALSE;
 }
+
+/**
+ * gst_vaapi_caps_get_profiles:
+ * @caps: a #GstCaps to detect
+ * @func: a #GstVaapiStrToProfileFunc
+ *
+ * This function will detect all profile strings and return
+ * the according GstVaapiProfile array.
+ *
+ * Return: A #GArray of @GstVaapiProfile if succeed, %NULL if fail.
+ **/
+GArray *
+gst_vaapi_caps_get_profiles (GstCaps * caps, GstVaapiStrToProfileFunc func)
+{
+  guint i, j;
+  GstVaapiProfile profile;
+  GArray *profiles = NULL;
+
+  if (!caps)
+    return NULL;
+
+  profiles = g_array_new (FALSE, FALSE, sizeof (GstVaapiProfile));
+  if (!profiles)
+    return NULL;
+
+  for (i = 0; i < gst_caps_get_size (caps); i++) {
+    GstStructure *const structure = gst_caps_get_structure (caps, i);
+    const GValue *const value = gst_structure_get_value (structure, "profile");
+
+    if (value && G_VALUE_HOLDS_STRING (value)) {
+      const gchar *str = g_value_get_string (value);
+      if (str) {
+        profile = func (str);
+        if (profile != GST_VAAPI_PROFILE_UNKNOWN)
+          g_array_append_val (profiles, profile);
+      }
+    } else if (value && GST_VALUE_HOLDS_LIST (value)) {
+      const GValue *v;
+      const gchar *str;
+      for (j = 0; j < gst_value_list_get_size (value); j++) {
+        v = gst_value_list_get_value (value, j);
+        if (!v || !G_VALUE_HOLDS_STRING (v))
+          continue;
+
+        str = g_value_get_string (v);
+        if (str) {
+          profile = func (str);
+          if (profile != GST_VAAPI_PROFILE_UNKNOWN)
+            g_array_append_val (profiles, profile);
+        }
+      }
+    }
+  }
+
+  if (profiles->len == 0) {
+    g_array_unref (profiles);
+    profiles = NULL;
+  }
+
+  return profiles;
+}
