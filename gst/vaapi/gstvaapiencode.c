@@ -340,30 +340,39 @@ gst_vaapiencode_buffer_loop (GstVaapiEncode * encode)
   gst_pad_pause_task (GST_VAAPI_PLUGIN_BASE_SRC_PAD (encode));
 }
 
-static GstVaapiProfile
-get_profile (GstVaapiEncode * encode)
+static GArray *
+get_profiles (GstVaapiEncode * encode)
 {
   GstVaapiEncodeClass *klass = GST_VAAPIENCODE_GET_CLASS (encode);
+  GstCaps *allowed;
+  GArray *profiles = NULL;
+  GstVaapiProfile profile;
 
-  if (klass->get_profile) {
-    GstVaapiProfile profile = GST_VAAPI_PROFILE_UNKNOWN;
-    GstCaps *allowed =
-        gst_pad_get_allowed_caps (GST_VAAPI_PLUGIN_BASE_SRC_PAD (encode));
-
-    if (allowed) {
-      if (!gst_caps_is_empty (allowed) && !gst_caps_is_any (allowed))
-        profile = klass->get_profile (allowed);
-      gst_caps_unref (allowed);
+  /* if no get_profiles provided, just use encoder's profile as default. */
+  if (!klass->get_profiles) {
+    profile = gst_vaapi_encoder_get_profile (encode->encoder);
+    if (profile != GST_VAAPI_PROFILE_UNKNOWN) {
+      profiles = g_array_new (FALSE, FALSE, sizeof (GstVaapiProfile));
+      g_array_append_val (profiles, profile);
     }
-
-    if (profile != GST_VAAPI_PROFILE_UNKNOWN)
-      return profile;
+    return profiles;
   }
 
-  if (encode->encoder)
-    return gst_vaapi_encoder_get_profile (encode->encoder);
+  allowed = gst_pad_get_allowed_caps (GST_VAAPI_PLUGIN_BASE_SRC_PAD (encode));
+  profiles = klass->get_profiles (encode, allowed);
+  if (allowed)
+    gst_caps_unref (allowed);
 
-  return GST_VAAPI_PROFILE_UNKNOWN;
+  /* Fallback to default if none */
+  if (profiles == NULL) {
+    profile = gst_vaapi_encoder_get_profile (encode->encoder);
+    if (profile != GST_VAAPI_PROFILE_UNKNOWN) {
+      profiles = g_array_new (FALSE, FALSE, sizeof (GstVaapiProfile));
+      g_array_append_val (profiles, profile);
+    }
+  }
+
+  return profiles;
 }
 
 static gboolean
@@ -374,7 +383,7 @@ ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
   GstCaps *va_caps, *dma_caps;
   GArray *formats = NULL;
   gboolean ret = FALSE;
-  GstVaapiProfile profile;
+  GArray *profiles = NULL;
   guint i, size;
   GstStructure *structure;
   gint min_width, min_height, max_width, max_height;
@@ -384,13 +393,14 @@ ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
   if (!encode->encoder)
     return TRUE;
 
-  profile = get_profile (encode);
-  if (profile == GST_VAAPI_PROFILE_UNKNOWN)
-    return TRUE;
+  /* First, get all possible supported profiles. */
+  profiles = get_profiles (encode);
+  if (profiles == NULL)
+    goto failed_get_profiles;
 
-  /* First get all supported formats, all these formats should be recognized
+  /* Then get all supported formats, all these formats should be recognized
      in video-format map. */
-  formats = gst_vaapi_encoder_get_surface_formats (encode->encoder, profile,
+  formats = gst_vaapi_encoder_get_surface_formats (encode->encoder, profiles,
       &min_width, &min_height, &max_width, &max_height);
   if (!formats)
     goto failed_get_formats;
@@ -433,6 +443,8 @@ bail:
   if (!encode->allowed_sinkpad_caps)
     encode->allowed_sinkpad_caps = gst_caps_new_empty ();
 
+  if (profiles)
+    g_array_unref (profiles);
   if (out_caps)
     gst_caps_unref (out_caps);
   if (raw_caps)
@@ -449,6 +461,11 @@ failed_get_formats:
 failed_create_raw_caps:
   {
     GST_WARNING_OBJECT (encode, "failed to create raw sink caps");
+    goto bail;
+  }
+failed_get_profiles:
+  {
+    GST_WARNING_OBJECT (encode, "failed to get supported profiles");
     goto bail;
   }
 }

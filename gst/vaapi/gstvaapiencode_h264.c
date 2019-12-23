@@ -128,23 +128,62 @@ gst_vaapiencode_h264_finalize (GObject * object)
   G_OBJECT_CLASS (gst_vaapiencode_h264_parent_class)->finalize (object);
 }
 
-static GstVaapiProfile
-gst_vaapiencode_h264_get_profile (GstCaps * caps)
+static GArray *
+gst_vaapiencode_h264_get_profiles (GstVaapiEncode * encode, GstCaps * allowed)
 {
   guint i;
+  GArray *profiles = NULL;
+  GArray *out_profiles = NULL;
+  GstVaapiProfile profile_allowed = GST_VAAPI_PROFILE_UNKNOWN;
+  GstVaapiProfile profile;
 
-  for (i = 0; i < gst_caps_get_size (caps); i++) {
-    GstStructure *const structure = gst_caps_get_structure (caps, i);
+  for (i = 0; i < gst_caps_get_size (allowed); i++) {
+    GstStructure *const structure = gst_caps_get_structure (allowed, i);
     const GValue *const value = gst_structure_get_value (structure, "profile");
 
     if (value && G_VALUE_HOLDS_STRING (value)) {
       const gchar *str = g_value_get_string (value);
       if (str)
-        return gst_vaapi_utils_h264_get_profile_from_string (str);
+        profile_allowed = gst_vaapi_utils_h264_get_profile_from_string (str);
+      break;
     }
+    /* TODO: profile may be the g_list */
   }
 
-  return GST_VAAPI_PROFILE_UNKNOWN;
+  /* definitely we can not get a possible profile */
+  if (gst_vaapi_profile_get_codec (profile_allowed) != GST_VAAPI_CODEC_H264)
+    goto out;
+
+  out_profiles = g_array_new (FALSE, FALSE, sizeof (GstVaapiProfile));
+  if (!out_profiles)
+    goto out;
+
+  profiles =
+      gst_vaapi_display_get_encode_profiles (GST_VAAPI_PLUGIN_BASE_DISPLAY
+      (encode));
+  if (!profiles)
+    goto out;
+
+  for (i = 0; i < profiles->len; i++) {
+    profile = g_array_index (profiles, GstVaapiProfile, i);
+    if (gst_vaapi_profile_get_codec (profile) != GST_VAAPI_CODEC_H264)
+      continue;
+
+    if (profile_allowed != profile)
+      continue;
+
+    g_array_append_val (out_profiles, profile);
+  }
+
+out:
+  if (profiles)
+    g_array_unref (profiles);
+  if (out_profiles && out_profiles->len == 0) {
+    g_array_unref (out_profiles);
+    out_profiles = NULL;
+  }
+
+  return out_profiles;
 }
 
 typedef struct
@@ -556,7 +595,7 @@ gst_vaapiencode_h264_class_init (GstVaapiEncodeH264Class * klass)
   object_class->set_property = gst_vaapiencode_set_property_subclass;
   object_class->get_property = gst_vaapiencode_get_property_subclass;
 
-  encode_class->get_profile = gst_vaapiencode_h264_get_profile;
+  encode_class->get_profiles = gst_vaapiencode_h264_get_profiles;
   encode_class->set_config = gst_vaapiencode_h264_set_config;
   encode_class->get_caps = gst_vaapiencode_h264_get_caps;
   encode_class->alloc_encoder = gst_vaapiencode_h264_alloc_encoder;

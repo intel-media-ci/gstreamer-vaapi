@@ -1573,19 +1573,18 @@ merge_profile_surface_formats (GstVaapiEncoder * encoder,
 /**
  * gst_vaapi_encoder_get_surface_formats:
  * @encoder: a #GstVaapiEncoder instances
+ * @profiles: a #GArray
  *
- * Fetches the valid surface formats for the current VAConfig
+ * Fetches the valid surface formats for the specified profiles
  *
- * Returns: a #GArray of valid formats for the current VAConfig
+ * Returns: a #GArray of valid formats for the profiles
  **/
 GArray *
 gst_vaapi_encoder_get_surface_formats (GstVaapiEncoder * encoder,
-    GstVaapiProfile profile, gint * min_width, gint * min_height,
+    GArray * profiles, gint * min_width, gint * min_height,
     gint * max_width, gint * max_height)
 {
-  const GstVaapiEncoderClassData *const cdata =
-      GST_VAAPI_ENCODER_GET_CLASS (encoder)->class_data;
-  GArray *profiles;
+  GstVaapiProfile profile;
   GArray *formats = NULL;
   guint i;
   gint max_w = 1;
@@ -1593,34 +1592,29 @@ gst_vaapi_encoder_get_surface_formats (GstVaapiEncoder * encoder,
   gint min_w = G_MAXINT;
   gint min_h = G_MAXINT;
 
-  if (profile || encoder->context) {
-    formats = get_profile_surface_formats (encoder, profile, &min_w,
-        &min_h, &max_w, &max_h);
-    goto out;
-  }
-
-  /* no specific context neither specific profile, let's iterate among
-   * the codec's profiles */
-  profiles = gst_vaapi_display_get_encode_profiles (encoder->display);
-  if (!profiles)
-    return NULL;
+  g_return_val_if_fail (encoder, NULL);
+  g_return_val_if_fail (profiles, NULL);
+  g_return_val_if_fail (min_width, NULL);
+  g_return_val_if_fail (min_height, NULL);
+  g_return_val_if_fail (max_width, NULL);
+  g_return_val_if_fail (max_height, NULL);
 
   formats = g_array_new (FALSE, FALSE, sizeof (GstVideoFormat));
   for (i = 0; i < profiles->len; i++) {
     profile = g_array_index (profiles, GstVaapiProfile, i);
-    if (gst_vaapi_profile_get_codec (profile) == cdata->codec) {
-      if (!merge_profile_surface_formats (encoder, profile, formats, &min_w,
-              &min_h, &max_w, &max_h)) {
-        g_array_unref (formats);
-        formats = NULL;
-        break;
-      }
+    g_assert (profile != GST_VAAPI_PROFILE_UNKNOWN);
+    if (!merge_profile_surface_formats (encoder, profile, formats, &min_w,
+            &min_h, &max_w, &max_h)) {
+      GST_INFO ("Can not get surface formats for profile %s",
+          string_of_VAProfile (profile));
     }
   }
 
-  g_array_unref (profiles);
+  if (formats->len == 0) {
+    g_array_unref (formats);
+    formats = NULL;
+  }
 
-out:
   if (formats) {
     if (max_w >= min_w && max_h >= min_h) {
       *min_width = min_w;
