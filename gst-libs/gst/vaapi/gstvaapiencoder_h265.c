@@ -908,8 +908,8 @@ bs_write_slice (GstBitWriter * bs,
             || slice_param->slice_fields.bits.slice_sao_chroma_flag
             || !slice_deblocking_filter_disabled_flag))
       WRITE_UINT32 (bs,
-          slice_param->slice_fields.bits.
-          slice_loop_filter_across_slices_enabled_flag, 1);
+          slice_param->slice_fields.
+          bits.slice_loop_filter_across_slices_enabled_flag, 1);
 
   }
 
@@ -1627,7 +1627,7 @@ fill_sequence (GstVaapiEncoderH265 * encoder, GstVaapiEncSequence * sequence)
 
   /* Based on 32x32 CTU (64x64 when using lowpower mode for hardware limitation) */
   seq_param->log2_min_luma_coding_block_size_minus3 = 0;
-  if (GST_VAAPI_ENCODER_TUNE (encoder) == GST_VAAPI_ENCODER_TUNE_LOW_POWER)
+  if (encoder->entrypoint == GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP)
     seq_param->log2_diff_max_min_luma_coding_block_size = 3;
   else
     seq_param->log2_diff_max_min_luma_coding_block_size = 2;
@@ -1727,7 +1727,7 @@ fill_picture (GstVaapiEncoderH265 * encoder, GstVaapiEncPicture * picture,
   /* it seems driver requires enablement of cu_qp_delta_enabled_flag
    * to modifiy QP values in CBR mode or low power encoding */
   if (GST_VAAPI_ENCODER_RATE_CONTROL (encoder) != GST_VAAPI_RATECONTROL_CQP
-      || GST_VAAPI_ENCODER_TUNE (encoder) == GST_VAAPI_ENCODER_TUNE_LOW_POWER)
+      || encoder->entrypoint == GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP)
     pic_param->pic_fields.bits.cu_qp_delta_enabled_flag = 1;
 
   /* XXX: Intel's media-driver, when using low-power mode, requires
@@ -1736,7 +1736,7 @@ fill_picture (GstVaapiEncoderH265 * encoder, GstVaapiEncPicture * picture,
    *
    * For now we assume that on only Intel's media-drivers supports
    * H265 low-power */
-  if ((GST_VAAPI_ENCODER_TUNE (encoder) == GST_VAAPI_ENCODER_TUNE_LOW_POWER) &&
+  if ((encoder->entrypoint == GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP) &&
       (pic_param->pic_fields.bits.cu_qp_delta_enabled_flag))
     pic_param->diff_cu_qp_delta_depth = 3;
 
@@ -1873,8 +1873,8 @@ add_slice_headers (GstVaapiEncoderH265 * encoder, GstVaapiEncPicture * picture,
       }
     }
 
-    slice_param->slice_fields.bits.
-        slice_loop_filter_across_slices_enabled_flag = TRUE;
+    slice_param->slice_fields.
+        bits.slice_loop_filter_across_slices_enabled_flag = TRUE;
 
     /* set calculation for next slice */
     last_ctu_index += cur_slice_ctus;
@@ -2654,13 +2654,6 @@ gst_vaapi_encoder_h265_reconfigure (GstVaapiEncoder * base_encoder)
         GST_VAAPI_ENCODER_HEIGHT (encoder));
     encoder->luma_width = GST_ROUND_UP_16 (luma_width);
     encoder->luma_height = GST_ROUND_UP_16 (luma_height);
-    if (GST_VAAPI_ENCODER_TUNE (encoder) == GST_VAAPI_ENCODER_TUNE_LOW_POWER) {
-      encoder->ctu_width = (encoder->luma_width + 63) / 64;
-      encoder->ctu_height = (encoder->luma_height + 63) / 64;
-    } else {
-      encoder->ctu_width = (encoder->luma_width + 31) / 32;
-      encoder->ctu_height = (encoder->luma_height + 31) / 32;
-    }
     encoder->config_changed = TRUE;
     /* Frame Cropping */
     if ((GST_VAAPI_ENCODER_WIDTH (encoder) & 15) ||
@@ -2682,6 +2675,15 @@ gst_vaapi_encoder_h265_reconfigure (GstVaapiEncoder * base_encoder)
   status = ensure_profile_tier_level (encoder);
   if (status != GST_VAAPI_ENCODER_STATUS_SUCCESS)
     return status;
+
+  /* Set ctu size based on entrypoint. */
+  if (encoder->entrypoint == GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP) {
+    encoder->ctu_width = (encoder->luma_width + 63) / 64;
+    encoder->ctu_height = (encoder->luma_height + 63) / 64;
+  } else {
+    encoder->ctu_width = (encoder->luma_width + 31) / 32;
+    encoder->ctu_height = (encoder->luma_height + 31) / 32;
+  }
 
   reset_properties (encoder);
   ensure_control_rate_params (encoder);
