@@ -724,8 +724,7 @@ init_context_info (GstVaapiEncoder * encoder, GstVaapiContextInfo * cip,
   if (cdata->codec == GST_VAAPI_CODEC_JPEG) {
     cip->entrypoint = GST_VAAPI_ENTRYPOINT_PICTURE_ENCODE;
   } else {
-    if (cip->entrypoint != GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP &&
-        cip->entrypoint != GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_FEI)
+    if (cip->entrypoint != GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP)
       cip->entrypoint = GST_VAAPI_ENTRYPOINT_SLICE_ENCODE;
   }
   cip->chroma_type = get_default_chroma_type (encoder, cip);
@@ -742,7 +741,6 @@ set_context_info (GstVaapiEncoder * encoder)
   GstVaapiConfigInfoEncoder *const config = &cip->config.encoder;
   const GstVideoFormat format =
       GST_VIDEO_INFO_FORMAT (GST_VAAPI_ENCODER_VIDEO_INFO (encoder));
-  guint fei_function = config->fei_function;
 
   init_context_info (encoder, cip, get_profile (encoder));
 
@@ -758,7 +756,6 @@ set_context_info (GstVaapiEncoder * encoder)
   config->packed_headers = get_packed_headers (encoder);
   config->roi_capability =
       get_roi_capability (encoder, &config->roi_num_supported);
-  config->fei_function = fei_function;
 
   return TRUE;
 
@@ -837,13 +834,6 @@ gst_vaapi_encoder_reconfigure_internal (GstVaapiEncoder * encoder)
   if (!gst_vaapi_encoder_ensure_context (encoder))
     goto error_reset_context;
 
-  /* Currently only FEI entrypoint needed this.
-   * FEI ENC+PAK requires two contexts where the first one is for ENC
-   * and the second one is for PAK */
-  if (klass->ensure_secondary_context
-      && !klass->ensure_secondary_context (encoder))
-    goto error_reset_secondary_context;
-
 #if VA_CHECK_VERSION(0,36,0)
   if (get_config_attribute (encoder, VAConfigAttribEncQualityRange,
           &quality_level_max) && quality_level_max > 0) {
@@ -896,11 +886,6 @@ error_alloc_codedbuf_pool:
 error_reset_context:
   {
     GST_ERROR ("failed to update VA context");
-    return GST_VAAPI_ENCODER_STATUS_ERROR_OPERATION_FAILED;
-  }
-error_reset_secondary_context:
-  {
-    GST_ERROR ("failed to create/update secondary VA context");
     return GST_VAAPI_ENCODER_STATUS_ERROR_OPERATION_FAILED;
   }
 }

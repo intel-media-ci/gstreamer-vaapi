@@ -27,12 +27,6 @@
 #include "gstvaapipluginbase.h"
 #include <gst/vaapi/gstvaapiencoder.h>
 
-#if USE_H264_FEI_ENCODER
-#include <gst/vaapi/gstvaapisurface.h>
-#include <gst/vaapi/gstvaapicodedbufferproxy.h>
-#include "gstvaapifeivideometa.h"
-#endif
-
 G_BEGIN_DECLS
 
 #define GST_TYPE_VAAPIENCODE \
@@ -82,17 +76,6 @@ struct _GstVaapiEncodeClass
                                          GstVaapiCodedBuffer * coded_buf,
                                          GstBuffer ** outbuf_ptr);
   GstVaapiProfile     (*get_profile)    (GstCaps * caps);
-
-#if USE_H264_FEI_ENCODER
-
-  gboolean              (*load_control_data)   (GstVaapiEncode *encoder,
-                                                GstVaapiFeiVideoMeta *feimeta,
-                                                GstVaapiSurfaceProxy *proxy);
-
-  GstVaapiFeiVideoMeta* (*save_stats_to_meta)  (GstVaapiEncode *base_encode,
-                                                GstVaapiCodedBufferProxy *proxy);
-
-#endif
 };
 
 GType
