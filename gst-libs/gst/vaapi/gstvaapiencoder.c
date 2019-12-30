@@ -1560,11 +1560,10 @@ merge_profile_surface_attributes (GstVaapiEncoder * encoder,
  * @max_width (out): the maximal surface width
  * @max_height (out): the maximal surface height
  *
- * Fetches the valid surface's attributes for the current cotext or
- * for a testing @profile.
- *
- * Returns: a #GArray of valid formats for the current context or
- * @profile or %NULL if failed
+ * Fetches the valid surface's attributes for @profile if it is valid.
+ * Or collects surface's attributes for all profiles which belong to
+ * the current encoder's codec. *
+ * Returns: a #GArray of valid formats we get or %NULL if failed.
  **/
 GArray *
 gst_vaapi_encoder_get_surface_attributes (GstVaapiEncoder * encoder,
@@ -1596,9 +1595,9 @@ gst_vaapi_encoder_get_surface_attributes (GstVaapiEncoder * encoder,
     profile = g_array_index (profiles, GstVaapiProfile, i);
     if (gst_vaapi_profile_get_codec (profile) == cdata->codec) {
       if (!merge_profile_surface_attributes (encoder, profile, &attribs)) {
-        g_array_unref (attribs.formats);
-        attribs.formats = NULL;
-        break;
+        GST_INFO ("Can not get surface formats for profile %s",
+            gst_vaapi_profile_get_va_name (profile));
+        continue;
       }
     }
   }

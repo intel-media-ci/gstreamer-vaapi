@@ -341,29 +341,28 @@ gst_vaapiencode_buffer_loop (GstVaapiEncode * encode)
 }
 
 static GstVaapiProfile
-get_profile (GstVaapiEncode * encode)
+get_profile_allowed (GstVaapiEncode * encode)
 {
   GstVaapiEncodeClass *klass = GST_VAAPIENCODE_GET_CLASS (encode);
+  GstVaapiProfile profile = GST_VAAPI_PROFILE_UNKNOWN;
 
   if (klass->get_profile) {
-    GstVaapiProfile profile = GST_VAAPI_PROFILE_UNKNOWN;
     GstCaps *allowed =
         gst_pad_get_allowed_caps (GST_VAAPI_PLUGIN_BASE_SRC_PAD (encode));
 
     if (allowed) {
-      if (!gst_caps_is_empty (allowed) && !gst_caps_is_any (allowed))
+      if (!gst_caps_is_empty (allowed) && !gst_caps_is_any (allowed)) {
         profile = klass->get_profile (allowed);
+      }
       gst_caps_unref (allowed);
     }
 
     if (profile != GST_VAAPI_PROFILE_UNKNOWN)
-      return profile;
+      GST_LOG_OBJECT (encode, "Get allowed profile %s",
+          gst_vaapi_profile_get_va_name (profile));
   }
 
-  if (encode->encoder)
-    return gst_vaapi_encoder_get_profile (encode->encoder);
-
-  return GST_VAAPI_PROFILE_UNKNOWN;
+  return profile;
 }
 
 static gboolean
@@ -384,10 +383,11 @@ ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
   if (!encode->encoder)
     return TRUE;
 
-  profile = get_profile (encode);
+  /* Query the downsteam whether have specified profile. */
+  profile = get_profile_allowed (encode);
 
-  /* First get all supported formats, all these formats should be recognized
-     in video-format map. */
+  /* Get all supported formats, all these formats should be recognized in
+     video-format map. */
   formats = gst_vaapi_encoder_get_surface_attributes (encode->encoder, profile,
       &min_width, &min_height, &max_width, &max_height);
   if (!formats)
