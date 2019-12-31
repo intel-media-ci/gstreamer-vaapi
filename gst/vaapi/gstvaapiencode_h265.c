@@ -100,22 +100,9 @@ gst_vaapiencode_h265_finalize (GObject * object)
 }
 
 static GstVaapiProfile
-gst_vaapiencode_h265_get_profile (GstCaps * caps)
+gst_vaapiencode_h265_get_profile (const gchar * str)
 {
-  guint i;
-
-  for (i = 0; i < gst_caps_get_size (caps); i++) {
-    GstStructure *const structure = gst_caps_get_structure (caps, i);
-    const GValue *const value = gst_structure_get_value (structure, "profile");
-
-    if (value && G_VALUE_HOLDS_STRING (value)) {
-      const gchar *str = g_value_get_string (value);
-      if (str)
-        return gst_vaapi_utils_h265_get_profile_from_string (str);
-    }
-  }
-
-  return GST_VAAPI_PROFILE_UNKNOWN;
+  return gst_vaapi_utils_h265_get_profile_from_string (str);
 }
 
 typedef struct

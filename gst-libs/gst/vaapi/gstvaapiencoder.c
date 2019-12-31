@@ -1554,20 +1554,20 @@ merge_profile_surface_attributes (GstVaapiEncoder * encoder,
 /**
  * gst_vaapi_encoder_get_surface_attributres:
  * @encoder: a #GstVaapiEncoder instances
- * @profile: a #GstVaapiProfile to test
+ * @profiles: a #GArray of #GstVaapiProfile to be test
  * @min_width (out): the minimal surface width
  * @min_height (out): the minimal surface height
  * @max_width (out): the maximal surface width
  * @max_height (out): the maximal surface height
  *
- * Fetches the valid surface's attributes for @profile if it is valid.
+ * Fetches the valid surface's attributes for @profiles if not NULL.
  * Or collects surface's attributes for all profiles which belong to
  * the current encoder's codec. *
  * Returns: a #GArray of valid formats we get or %NULL if failed.
  **/
 GArray *
 gst_vaapi_encoder_get_surface_attributes (GstVaapiEncoder * encoder,
-    GstVaapiProfile profile, gint * min_width, gint * min_height,
+    GArray * in_profiles, gint * min_width, gint * min_height,
     gint * max_width, gint * max_height)
 {
   const GstVaapiEncoderClassData *const cdata =
@@ -1575,20 +1575,19 @@ gst_vaapi_encoder_get_surface_attributes (GstVaapiEncoder * encoder,
   GstVaapiConfigSurfaceAttributes attribs = {
     G_MAXINT, G_MAXINT, 1, 1, 0, NULL
   };
+  GstVaapiProfile profile;
   GArray *profiles;
   guint i;
 
-  if (profile != GST_VAAPI_PROFILE_UNKNOWN) {
-    if (get_profile_surface_attributes (encoder, profile, &attribs))
-      goto success;
-    return NULL;
-  }
-
   /* no specific context neither specific profile, let's iterate among
    * the codec's profiles */
-  profiles = gst_vaapi_display_get_encode_profiles (encoder->display);
-  if (!profiles)
-    return NULL;
+  if (!in_profiles) {
+    profiles = gst_vaapi_display_get_encode_profiles (encoder->display);
+    if (!profiles)
+      return NULL;
+  } else {
+    profiles = g_array_ref (in_profiles);
+  }
 
   attribs.formats = g_array_new (FALSE, FALSE, sizeof (GstVideoFormat));
   for (i = 0; i < profiles->len; i++) {
@@ -1607,7 +1606,6 @@ gst_vaapi_encoder_get_surface_attributes (GstVaapiEncoder * encoder,
   if (!attribs.formats)
     return NULL;
 
-success:
   if (min_width)
     *min_width = attribs.min_width;
   if (min_height)

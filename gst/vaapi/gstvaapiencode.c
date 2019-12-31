@@ -340,30 +340,72 @@ gst_vaapiencode_buffer_loop (GstVaapiEncode * encode)
   gst_pad_pause_task (GST_VAAPI_PLUGIN_BASE_SRC_PAD (encode));
 }
 
-static GstVaapiProfile
-get_profile (GstVaapiEncode * encode)
+static GArray *
+get_allowed_profiles (GstVaapiEncode * encode)
 {
   GstVaapiEncodeClass *klass = GST_VAAPIENCODE_GET_CLASS (encode);
+  GstCaps *allowed = NULL;
+  GArray *profiles = NULL;
+  guint i, j;
+  GstVaapiProfile profile;
 
-  if (klass->get_profile) {
-    GstVaapiProfile profile = GST_VAAPI_PROFILE_UNKNOWN;
-    GstCaps *allowed =
-        gst_pad_get_allowed_caps (GST_VAAPI_PLUGIN_BASE_SRC_PAD (encode));
+  if (!klass->get_profile)
+    goto out;
 
-    if (allowed) {
-      if (!gst_caps_is_empty (allowed) && !gst_caps_is_any (allowed))
-        profile = klass->get_profile (allowed);
-      gst_caps_unref (allowed);
+  allowed = gst_pad_get_allowed_caps (GST_VAAPI_PLUGIN_BASE_SRC_PAD (encode));
+  if (!allowed)
+    goto out;
+  if (gst_caps_is_empty (allowed) || gst_caps_is_any (allowed))
+    goto out;
+
+  profiles = g_array_new (FALSE, FALSE, sizeof (GstVaapiProfile));
+  if (!profiles)
+    goto out;
+
+  for (i = 0; i < gst_caps_get_size (allowed); i++) {
+    GstStructure *const structure = gst_caps_get_structure (allowed, i);
+    const GValue *const value = gst_structure_get_value (structure, "profile");
+
+    if (value && G_VALUE_HOLDS_STRING (value)) {
+      const gchar *str = g_value_get_string (value);
+      if (str) {
+        profile = klass->get_profile (str);
+        if (profile != GST_VAAPI_PROFILE_UNKNOWN) {
+          GST_LOG_OBJECT (encode, "Add profile %s to allowed profiles list",
+              gst_vaapi_profile_get_va_name (profile));
+          g_array_append_val (profiles, profile);
+        }
+      }
+    } else if (value && GST_VALUE_HOLDS_LIST (value)) {
+      const GValue *v;
+      const gchar *str;
+      for (j = 0; j < gst_value_list_get_size (value); j++) {
+        v = gst_value_list_get_value (value, j);
+        if (!v || !G_VALUE_HOLDS_STRING (v))
+          continue;
+
+        str = g_value_get_string (v);
+        if (str) {
+          profile = klass->get_profile (str);
+          if (profile != GST_VAAPI_PROFILE_UNKNOWN) {
+            GST_LOG_OBJECT (encode, "Add profile %s to allowed profiles list",
+                gst_vaapi_profile_get_va_name (profile));
+            g_array_append_val (profiles, profile);
+          }
+        }
+      }
     }
-
-    if (profile != GST_VAAPI_PROFILE_UNKNOWN)
-      return profile;
   }
 
-  if (encode->encoder)
-    return gst_vaapi_encoder_get_profile (encode->encoder);
+out:
+  if (allowed)
+    gst_caps_unref (allowed);
+  if (profiles && profiles->len == 0) {
+    g_array_unref (profiles);
+    profiles = NULL;
+  }
 
-  return GST_VAAPI_PROFILE_UNKNOWN;
+  return profiles;
 }
 
 static gboolean
@@ -374,7 +416,7 @@ ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
   GstCaps *va_caps, *dma_caps;
   GArray *formats = NULL;
   gboolean ret = FALSE;
-  GstVaapiProfile profile;
+  GArray *profiles = NULL;
   guint i, size;
   GstStructure *structure;
   gint min_width, min_height, max_width, max_height;
@@ -384,11 +426,12 @@ ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
   if (!encode->encoder)
     return TRUE;
 
-  profile = get_profile (encode);
+  /* Collect all possible supported profiles */
+  profiles = get_allowed_profiles (encode);
 
-  /* First get all supported formats, all these formats should be recognized
-     in video-format map. */
-  formats = gst_vaapi_encoder_get_surface_attributes (encode->encoder, profile,
+  /* Detect all supported formats based on profiles, all these formats should
+     be recognized in video-format map. */
+  formats = gst_vaapi_encoder_get_surface_attributes (encode->encoder, profiles,
       &min_width, &min_height, &max_width, &max_height);
   if (!formats)
     goto failed_get_attributes;
@@ -431,6 +474,8 @@ bail:
   if (!encode->allowed_sinkpad_caps)
     encode->allowed_sinkpad_caps = gst_caps_new_empty ();
 
+  if (profiles)
+    g_array_unref (profiles);
   if (out_caps)
     gst_caps_unref (out_caps);
   if (raw_caps)
