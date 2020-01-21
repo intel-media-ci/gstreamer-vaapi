@@ -92,10 +92,14 @@ typedef struct _GstVaapiDisplay                 GstVaapiDisplay;
  * @GST_VAAPI_DRIVER_QUIRK_NO_CHECK_SURFACE_PUT_IMAGE: if driver
  *   crashes when try to put an image in a reused surface.
  *   https://gitlab.freedesktop.org/mesa/mesa/merge_requests/2016
+ * @GST_VAAPI_DRIVER_QUIRK_SURFACELESS_CONTEXT: if driver can handle
+ *   unregistered surfaces in a decoding context.
+ *   https://lists.01.org/hyperkitty/list/intel-vaapi-media@lists.01.org/thread/TTHATZJ5RQ6PZISI2FAZUUHCQXW2YNYS/
  */
 typedef enum
 {
   GST_VAAPI_DRIVER_QUIRK_NO_CHECK_SURFACE_PUT_IMAGE = (1U << 0),
+  GST_VAAPI_DRIVER_QUIRK_SURFACELESS_CONTEXT = (1U << 1),
 } GstVaapiDriverQuirks;
 
 /**

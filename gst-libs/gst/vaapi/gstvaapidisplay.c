@@ -786,6 +786,11 @@ set_driver_quirks (GstVaapiDisplay * display)
   } vaapi_driver_quirks_table[] = {
     /* @XXX(victor): is this string enough to identify it */
     { "AMD", GST_VAAPI_DRIVER_QUIRK_NO_CHECK_SURFACE_PUT_IMAGE },
+    /* @XXX(victor): not sure if it's possible before libva 2.0 */
+#if VA_CHECK_VERSION(1,0,0)
+    { "iHD", GST_VAAPI_DRIVER_QUIRK_SURFACELESS_CONTEXT },
+    { "i965", GST_VAAPI_DRIVER_QUIRK_SURFACELESS_CONTEXT },
+#endif
   };
   /* *INDENT-ON* */
 

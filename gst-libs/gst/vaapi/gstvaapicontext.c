@@ -249,8 +249,9 @@ context_create (GstVaapiContext * context)
   gboolean success = FALSE;
   guint i;
 
-#if SUPPORT_SURFACELESS_CONTEXT
-  if (cip->usage == GST_VAAPI_CONTEXT_USAGE_DECODE) {
+  if (gst_vaapi_display_has_driver_quirks (display,
+          GST_VAAPI_DRIVER_QUIRK_SURFACELESS_CONTEXT)
+      && cip->usage == GST_VAAPI_CONTEXT_USAGE_DECODE) {
     /* try surfaceless context creation, if fail, fallback */
     if (!context->surfaces_pool)
       context_create_surface_pool (context);
@@ -270,7 +271,6 @@ context_create (GstVaapiContext * context)
       }
     }
   }
-#endif
 
   if (!context->surfaces && !context_create_surfaces (context))
     goto cleanup;
