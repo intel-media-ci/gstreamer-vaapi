@@ -100,6 +100,20 @@ get_preferred_format (GstVaapiContext * context)
   return context->preferred_format;
 }
 
+static inline guint
+get_surface_allocation_flags (GstVaapiContext * context)
+{
+  const GstVaapiContextInfo *const cip = &context->info;
+  guint surface_alloc_flags = 0;
+
+  if (cip->usage == GST_VAAPI_CONTEXT_USAGE_DECODE)
+    surface_alloc_flags |= GST_VAAPI_SURFACE_ALLOC_FLAG_HINT_DECODER;
+  else if (cip->usage == GST_VAAPI_CONTEXT_USAGE_ENCODE)
+    surface_alloc_flags |= GST_VAAPI_SURFACE_ALLOC_FLAG_HINT_ENCODER;
+
+  return surface_alloc_flags;
+}
+
 static inline gboolean
 context_get_attribute (GstVaapiContext * context, VAConfigAttribType type,
     guint * out_value_ptr)
@@ -171,7 +185,7 @@ context_ensure_surfaces (GstVaapiContext * context)
   for (i = context->surfaces->len; i < num_surfaces; i++) {
     if (format != GST_VIDEO_FORMAT_UNKNOWN) {
       surface = gst_vaapi_surface_new_with_format (display, format, cip->width,
-          cip->height, 0);
+          cip->height, get_surface_allocation_flags (context));
     } else {
       surface = gst_vaapi_surface_new (display, cip->chroma_type, cip->width,
           cip->height);
@@ -204,7 +218,7 @@ context_create_surfaces (GstVaapiContext * context)
   if (!context->surfaces_pool) {
     context->surfaces_pool =
         gst_vaapi_surface_pool_new_with_chroma_type (display, cip->chroma_type,
-        cip->width, cip->height, 0);
+        cip->width, cip->height, get_surface_allocation_flags (context));
 
     if (!context->surfaces_pool)
       return FALSE;
