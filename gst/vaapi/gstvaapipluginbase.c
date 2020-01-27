@@ -494,6 +494,7 @@ ensure_sinkpad_allocator (GstVaapiPluginBase * plugin, GstPad * sinkpad,
   GstVaapiPadPrivate *sinkpriv = GST_VAAPI_PAD_PRIVATE (sinkpad);
   GstVideoInfo vinfo;
   const GstVideoInfo *image_info;
+  guint alloc_flags = 0;
   GstVaapiImageUsageFlags usage_flag =
       GST_VAAPI_IMAGE_USAGE_FLAG_NATIVE_FORMATS;
 
@@ -506,10 +507,16 @@ ensure_sinkpad_allocator (GstVaapiPluginBase * plugin, GstPad * sinkpad,
   /* enable direct upload if upstream requests raw video */
   if (gst_caps_is_video_raw (caps)) {
     usage_flag = GST_VAAPI_IMAGE_USAGE_FLAG_DIRECT_UPLOAD;
+    alloc_flags = GST_VAAPI_SURFACE_ALLOC_FLAG_LINEAR_STORAGE |
+        GST_VAAPI_SURFACE_ALLOC_FLAG_FIXED_STRIDES |
+        GST_VAAPI_SURFACE_ALLOC_FLAG_FIXED_OFFSETS;
+    if (GST_IS_VIDEO_ENCODER (plugin))
+      alloc_flags |= GST_VAAPI_SURFACE_ALLOC_FLAG_HINT_ENCODER;
     GST_INFO_OBJECT (plugin, "enabling direct upload in sink allocator");
   }
   sinkpriv->allocator =
-      gst_vaapi_video_allocator_new (plugin->display, &vinfo, 0, usage_flag);
+      gst_vaapi_video_allocator_new (plugin->display, &vinfo, alloc_flags,
+      usage_flag);
 
 bail:
   if (!sinkpriv->allocator)
