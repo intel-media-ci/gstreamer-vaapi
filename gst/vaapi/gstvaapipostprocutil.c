@@ -600,6 +600,7 @@ _set_colorimetry (GstVaapiPostproc * postproc, GstVideoFormat format,
 {
   GstVideoInfo vinfo;
   GstVideoColorimetry colorimetry;
+  const gchar *ocolor;
   gchar *color;
   gint width, height;
 
@@ -614,8 +615,12 @@ _set_colorimetry (GstVaapiPostproc * postproc, GstVideoFormat format,
         gst_video_chroma_to_string (GST_VIDEO_INFO_CHROMA_SITE (&vinfo)), NULL);
   }
 
+  /* if outs structure already specifies colorimetry, use it */
+  ocolor = gst_structure_get_string (outs, "colorimetry");
+  if (!(ocolor && gst_video_colorimetry_from_string (&colorimetry, ocolor)))
+    colorimetry = GST_VIDEO_INFO_COLORIMETRY (&vinfo);
+
   /* make sure we set the RGB matrix for RGB formats */
-  colorimetry = GST_VIDEO_INFO_COLORIMETRY (&vinfo);
   if (GST_VIDEO_FORMAT_INFO_IS_RGB (vinfo.finfo) &&
       colorimetry.matrix != GST_VIDEO_COLOR_MATRIX_RGB) {
     GST_WARNING ("invalid matrix %d for RGB format, using RGB",
