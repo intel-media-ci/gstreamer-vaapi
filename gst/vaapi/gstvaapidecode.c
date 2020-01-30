@@ -544,8 +544,12 @@ gst_vaapidecode_push_decoded_frame (GstVideoDecoder * vdec,
         return GST_FLOW_ERROR;
     }
 
-    gst_vaapi_surface_proxy_set_destroy_notify (proxy,
-        (GDestroyNotify) gst_vaapidecode_release, gst_object_ref (decode));
+    /* If surfaceless, do not need to notify, no one is waiting. */
+    if (!gst_vaapi_display_has_driver_quirks (GST_VAAPI_PLUGIN_BASE_DISPLAY
+            (decode), GST_VAAPI_DRIVER_QUIRK_SURFACELESS_CONTEXT)) {
+      gst_vaapi_surface_proxy_set_destroy_notify (proxy,
+          (GDestroyNotify) gst_vaapidecode_release, gst_object_ref (decode));
+    }
 
     if (is_src_allocator_dmabuf (decode)) {
       vaapi_params.proxy = gst_vaapi_surface_proxy_ref (proxy);
@@ -718,17 +722,27 @@ gst_vaapidecode_handle_frame (GstVideoDecoder * vdec,
   for (;;) {
     status = gst_vaapi_decoder_decode (decode->decoder, frame);
     if (status == GST_VAAPI_DECODER_STATUS_ERROR_NO_SURFACE) {
-      /* Make sure that there are no decoded frames waiting in the
-         output queue. */
-      gst_vaapidecode_push_all_decoded_frames (decode);
+      if (gst_vaapi_display_has_driver_quirks (GST_VAAPI_PLUGIN_BASE_DISPLAY
+              (decode), GST_VAAPI_DRIVER_QUIRK_SURFACELESS_CONTEXT)) {
+        /* Make sure that there are no decoded frames waiting in the
+           output queue. */
+        gst_vaapidecode_push_all_decoded_frames (decode);
 
-      g_mutex_lock (&decode->surface_ready_mutex);
-      if (gst_vaapi_decoder_check_status (decode->decoder) ==
-          GST_VAAPI_DECODER_STATUS_ERROR_NO_SURFACE)
-        g_cond_wait (&decode->surface_ready, &decode->surface_ready_mutex);
-      g_mutex_unlock (&decode->surface_ready_mutex);
-      continue;
+        g_mutex_lock (&decode->surface_ready_mutex);
+        if (gst_vaapi_decoder_check_status (decode->decoder) ==
+            GST_VAAPI_DECODER_STATUS_ERROR_NO_SURFACE)
+          g_cond_wait (&decode->surface_ready, &decode->surface_ready_mutex);
+        g_mutex_unlock (&decode->surface_ready_mutex);
+        continue;
+      } else {
+        /* If surfaceless, the all the available surfaces are exhausted,
+           need to fail here. */
+        GST_ERROR_OBJECT (decode, "All surfaces are exhausted!");
+        status = GST_VAAPI_DECODER_STATUS_ERROR_ALLOCATION_FAILED;
+        goto error_decode;
+      }
     }
+
     if (status != GST_VAAPI_DECODER_STATUS_SUCCESS)
       goto error_decode;
     break;
