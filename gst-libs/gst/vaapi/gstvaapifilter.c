@@ -71,6 +71,9 @@ struct _GstVaapiFilter
   guint use_target_rect:1;
   guint32 mirror_flags;
   guint32 rotation_flags;
+
+  GstVideoColorimetry in_colorimetry;
+  GstVideoColorimetry out_colorimetry;
 };
 
 typedef struct _GstVaapiFilterClass GstVaapiFilterClass;
@@ -1216,6 +1219,10 @@ gst_vaapi_filter_initialize (GstVaapiFilter * filter)
       NULL, 0, &filter->va_context);
   if (!vaapi_check_status (va_status, "vaCreateContext() [VPP]"))
     return FALSE;
+
+  gst_video_colorimetry_from_string (&filter->in_colorimetry, NULL);
+  gst_video_colorimetry_from_string (&filter->out_colorimetry, NULL);
+
   return TRUE;
 }
 
@@ -1519,6 +1526,27 @@ gst_vaapi_filter_set_operation (GstVaapiFilter * filter, GstVaapiFilterOp op,
   return FALSE;
 }
 
+static void
+from_GstVideoColorimetry (GstVideoColorimetry * colorimetry,
+    VAProcColorStandardType * type, VAProcColorProperties * properties)
+{
+  if (colorimetry->primaries == GST_VIDEO_COLOR_PRIMARIES_UNKNOWN) {
+    *type = VAProcColorStandardNone;
+  } else if (gst_video_colorimetry_matches (colorimetry, "bt709")) {
+    *type = VAProcColorStandardBT709;
+  } else if (gst_video_colorimetry_matches (colorimetry, "bt2020-10")) {
+    *type = VAProcColorStandardBT2020;
+  } else {
+    *type = VAProcColorStandardExplicit;
+    properties->colour_primaries =
+        gst_video_color_primaries_to_iso (colorimetry->primaries);
+    properties->transfer_characteristics =
+        gst_video_color_transfer_to_iso (colorimetry->transfer);
+    properties->matrix_coefficients =
+        gst_video_color_matrix_to_iso (colorimetry->matrix);
+  }
+}
+
 /**
  * gst_vaapi_filter_process:
  * @filter: a #GstVaapiFilter
@@ -1619,9 +1647,16 @@ gst_vaapi_filter_process_unlocked (GstVaapiFilter * filter,
   memset (pipeline_param, 0, sizeof (*pipeline_param));
   pipeline_param->surface = GST_VAAPI_SURFACE_ID (src_surface);
   pipeline_param->surface_region = &src_rect;
-  pipeline_param->surface_color_standard = VAProcColorStandardNone;
+
+  from_GstVideoColorimetry (&filter->in_colorimetry,
+      &pipeline_param->surface_color_standard,
+      &pipeline_param->input_color_properties);
+
+  from_GstVideoColorimetry (&filter->out_colorimetry,
+      &pipeline_param->output_color_standard,
+      &pipeline_param->output_color_properties);
+
   pipeline_param->output_region = &dst_rect;
-  pipeline_param->output_color_standard = VAProcColorStandardNone;
   pipeline_param->output_background_color = 0xff000000;
   pipeline_param->filter_flags = from_GstVaapiSurfaceRenderFlags (flags) |
       from_GstVaapiScaleMethod (filter->scale_method);
@@ -2200,4 +2235,22 @@ GstVideoOrientationMethod
 gst_vaapi_filter_get_video_direction_default (GstVaapiFilter * filter)
 {
   OP_RET_DEFAULT_VALUE (enum, filter, GST_VAAPI_FILTER_OP_VIDEO_DIRECTION);
+}
+
+gboolean
+gst_vaapi_filter_set_colorimetry (GstVaapiFilter * filter,
+    GstVideoColorimetry * input, GstVideoColorimetry * output)
+{
+  g_return_val_if_fail (filter != NULL, FALSE);
+
+  gst_video_colorimetry_from_string (&filter->in_colorimetry, NULL);
+  gst_video_colorimetry_from_string (&filter->out_colorimetry, NULL);
+
+  if (input)
+    filter->in_colorimetry = *input;
+
+  if (output)
+    filter->out_colorimetry = *output;
+
+  return TRUE;
 }
