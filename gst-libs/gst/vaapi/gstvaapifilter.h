@@ -67,6 +67,7 @@ typedef enum {
   GST_VAAPI_FILTER_OP_DEINTERLACING,
   GST_VAAPI_FILTER_OP_SCALING,
   GST_VAAPI_FILTER_OP_VIDEO_DIRECTION,
+  GST_VAAPI_FILTER_OP_TONE_MAP,
 #ifndef GST_REMOVE_DEPRECATED
   GST_VAAPI_FILTER_OP_SKINTONE,
 #endif
@@ -272,6 +273,13 @@ gst_vaapi_filter_set_skintone (GstVaapiFilter * filter,
 gboolean
 gst_vaapi_filter_set_skintone_level (GstVaapiFilter * filter, guint value);
 
+gboolean
+gst_vaapi_filter_set_tone_map (GstVaapiFilter * filter, gboolean tonemap);
+
+gboolean
+gst_vaapi_filter_set_tone_map_meta (GstVaapiFilter * filter,
+    GstVideoMasteringDisplayInfo * minfo, GstVideoContentLightLevel * linfo);
+
 gfloat
 gst_vaapi_filter_get_denoising_level_default (GstVaapiFilter * filter);
 
@@ -307,6 +315,9 @@ gst_vaapi_filter_get_skintone_level_default (GstVaapiFilter * filter);
 gboolean
 gst_vaapi_filter_set_colorimetry (GstVaapiFilter * filter,
     GstVideoColorimetry * input, GstVideoColorimetry * output);
+
+gboolean
+gst_vaapi_filter_get_tone_map_default (GstVaapiFilter * filter);
 
 #ifdef G_DEFINE_AUTOPTR_CLEANUP_FUNC
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(GstVaapiFilter, gst_object_unref)

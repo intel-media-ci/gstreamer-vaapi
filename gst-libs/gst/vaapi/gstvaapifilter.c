@@ -74,6 +74,8 @@ struct _GstVaapiFilter
 
   GstVideoColorimetry input_colorimetry;
   GstVideoColorimetry output_colorimetry;
+
+  VAHdrMetaDataHDR10 hdrmeta;
 };
 
 typedef struct _GstVaapiFilterClass GstVaapiFilterClass;
@@ -340,6 +342,7 @@ enum
   PROP_DEINTERLACING = GST_VAAPI_FILTER_OP_DEINTERLACING,
   PROP_SCALING = GST_VAAPI_FILTER_OP_SCALING,
   PROP_VIDEO_DIRECTION = GST_VAAPI_FILTER_OP_VIDEO_DIRECTION,
+  PROP_TONE_MAP = GST_VAAPI_FILTER_OP_TONE_MAP,
 #ifndef GST_REMOVE_DEPRECATED
   PROP_SKINTONE = GST_VAAPI_FILTER_OP_SKINTONE,
 #endif
@@ -480,6 +483,11 @@ init_properties (void)
       GST_VIDEO_ORIENTATION_IDENTITY,
       G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
+  g_properties[PROP_TONE_MAP] = g_param_spec_boolean ("tone-map",
+      "HDR Tone Mapping",
+      "Apply HDR tone mapping",
+      FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
 #ifndef GST_REMOVE_DEPRECATED
   /**
    * GstVaapiFilter:skin-tone-enhancement:
@@ -580,6 +588,14 @@ op_data_new (GstVaapiFilterOp op, GParamSpec * pspec)
       op_data->va_cap_size = sizeof (VAProcFilterCapDeinterlacing);
       op_data->va_buffer_size =
           sizeof (VAProcFilterParameterBufferDeinterlacing);
+      break;
+    case GST_VAAPI_FILTER_OP_TONE_MAP:
+      /* Currently, we only support HDR10 tone mapping */
+      op_data->va_subtype = VAProcHighDynamicRangeMetadataHDR10;
+      op_data->va_type = VAProcFilterHighDynamicRangeToneMapping;
+      op_data->va_cap_size = sizeof (VAProcFilterCapHighDynamicRange);
+      op_data->va_buffer_size =
+          sizeof (VAProcFilterParameterBufferHDRToneMapping);
       break;
     default:
       g_assert (0 && "unsupported operation");
@@ -1055,6 +1071,49 @@ op_set_deinterlace (GstVaapiFilter * filter, GstVaapiFilterOpData * op_data,
   return success;
 }
 
+static gboolean
+op_set_tone_map_unlocked (GstVaapiFilter * filter,
+    GstVaapiFilterOpData * op_data, gboolean value)
+{
+  const VAProcFilterCapHighDynamicRange *filter_caps;
+  guint i;
+
+  g_return_val_if_fail (op_data != NULL, FALSE);
+
+  if (!value) {
+    op_data->is_enabled = 0;
+    return TRUE;
+  }
+
+  if (!op_ensure_buffer (filter, op_data))
+    return FALSE;
+
+  op_data->is_enabled = 1;
+
+  for (i = 0, filter_caps = op_data->va_caps; i < op_data->va_num_caps; i++) {
+    if (filter_caps[i].metadata_type == op_data->va_subtype &&
+        (filter_caps[i].caps_flag & VA_TONE_MAPPING_HDR_TO_SDR))
+      break;
+  }
+  if (i == op_data->va_num_caps)
+    return FALSE;
+
+  return TRUE;
+}
+
+static inline gboolean
+op_set_tone_map (GstVaapiFilter * filter, GstVaapiFilterOpData * op_data,
+    gboolean value)
+{
+  gboolean success = FALSE;
+  GST_VAAPI_DISPLAY_LOCK (filter->display);
+  success = op_set_tone_map_unlocked (filter, op_data, value);
+  GST_VAAPI_DISPLAY_UNLOCK (filter->display);
+
+  return success;
+}
+
+
 /* Update skin tone enhancement level */
 static gboolean
 op_set_skintone_level_unlocked (GstVaapiFilter * filter,
@@ -1520,6 +1579,10 @@ gst_vaapi_filter_set_operation (GstVaapiFilter * filter, GstVaapiFilterOp op,
       return gst_vaapi_filter_set_video_direction (filter,
           (value ? g_value_get_enum (value) :
               OP_DATA_DEFAULT_VALUE (enum, op_data)));
+    case GST_VAAPI_FILTER_OP_TONE_MAP:
+      return op_set_tone_map (filter, op_data,
+          (value ? g_value_get_boolean (value) :
+              OP_DATA_DEFAULT_VALUE (boolean, op_data)));
     default:
       break;
   }
@@ -2314,4 +2377,87 @@ gst_vaapi_filter_set_colorimetry (GstVaapiFilter * filter,
   GST_VAAPI_DISPLAY_UNLOCK (filter->display);
 
   return result;
+}
+
+gboolean
+gst_vaapi_filter_set_tone_map (GstVaapiFilter * filter, gboolean tonemap)
+{
+  g_return_val_if_fail (filter != NULL, FALSE);
+
+  return op_set_tone_map (filter,
+      find_operation (filter, GST_VAAPI_FILTER_OP_TONE_MAP), tonemap);
+}
+
+static gboolean
+gst_vaapi_filter_set_tone_map_meta_unlocked (GstVaapiFilter * filter,
+    GstVideoMasteringDisplayInfo * minfo, GstVideoContentLightLevel * linfo)
+{
+  GstVaapiFilterOpData *op_data;
+  VAProcFilterParameterBufferHDRToneMapping *buf;
+  VAHdrMetaDataHDR10 *meta;
+
+  op_data = find_operation (filter, GST_VAAPI_FILTER_OP_TONE_MAP);
+
+  if (!op_data)
+    return FALSE;
+
+  meta = &filter->hdrmeta;
+  memset (meta, 0, sizeof (*meta));
+
+  meta->display_primaries_x[0] = 50000 * ((gdouble) minfo->Gx_n / minfo->Gx_d);
+  meta->display_primaries_x[1] = 50000 * ((gdouble) minfo->Bx_n / minfo->Bx_d);
+  meta->display_primaries_x[2] = 50000 * ((gdouble) minfo->Rx_n / minfo->Rx_d);
+
+  meta->display_primaries_y[0] = 50000 * ((gdouble) minfo->Gy_n / minfo->Gy_d);
+  meta->display_primaries_y[1] = 50000 * ((gdouble) minfo->By_n / minfo->By_d);
+  meta->display_primaries_y[2] = 50000 * ((gdouble) minfo->Ry_n / minfo->Ry_d);
+
+  meta->white_point_x = 50000 * ((gdouble) minfo->Wx_n / minfo->Wx_d);
+  meta->white_point_y = 50000 * ((gdouble) minfo->Wy_n / minfo->Wy_d);
+
+  meta->max_display_mastering_luminance =
+      10000 * ((gdouble) minfo->max_luma_n / minfo->max_luma_d);
+  meta->min_display_mastering_luminance =
+      10000 * ((gdouble) minfo->min_luma_n / minfo->min_luma_d);
+
+  meta->max_content_light_level =
+      10000 * ((gdouble) linfo->maxCLL_n / linfo->maxCLL_d);
+  meta->max_pic_average_light_level =
+      10000 * ((gdouble) linfo->maxFALL_n / linfo->maxFALL_d);
+
+  buf = vaapi_map_buffer (filter->va_display, op_data->va_buffer);
+  if (!buf)
+    return FALSE;
+
+  buf->type = op_data->va_type;
+  buf->data.metadata_type = op_data->va_subtype;
+  buf->data.metadata = meta;
+  buf->data.metadata_size = sizeof (meta);
+
+  vaapi_unmap_buffer (filter->va_display, op_data->va_buffer, NULL);
+
+  return TRUE;
+}
+
+gboolean
+gst_vaapi_filter_set_tone_map_meta (GstVaapiFilter * filter,
+    GstVideoMasteringDisplayInfo * minfo, GstVideoContentLightLevel * linfo)
+{
+  gboolean status = FALSE;
+
+  g_return_val_if_fail (filter != NULL, FALSE);
+  g_return_val_if_fail (minfo != NULL, FALSE);
+  g_return_val_if_fail (linfo != NULL, FALSE);
+
+  GST_VAAPI_DISPLAY_LOCK (filter->display);
+  status = gst_vaapi_filter_set_tone_map_meta_unlocked (filter, minfo, linfo);
+  GST_VAAPI_DISPLAY_UNLOCK (filter->display);
+
+  return status;
+}
+
+gboolean
+gst_vaapi_filter_get_tone_map_default (GstVaapiFilter * filter)
+{
+  OP_RET_DEFAULT_VALUE (boolean, filter, GST_VAAPI_FILTER_OP_TONE_MAP);
 }

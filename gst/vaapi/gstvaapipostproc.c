@@ -123,6 +123,7 @@ enum
   PROP_CONTRAST,
   PROP_SCALE_METHOD,
   PROP_VIDEO_DIRECTION,
+  PROP_TONE_MAP,
   PROP_CROP_LEFT,
   PROP_CROP_RIGHT,
   PROP_CROP_TOP,
@@ -628,6 +629,15 @@ update_filter (GstVaapiPostproc * postproc)
       postproc->flags &= ~(GST_VAAPI_POSTPROC_FLAG_VIDEO_DIRECTION);
   }
 
+  if (postproc->flags & GST_VAAPI_POSTPROC_FLAG_TONE_MAP) {
+    if (!gst_vaapi_filter_set_tone_map (postproc->filter, postproc->tonemap))
+      return FALSE;
+
+    if (gst_vaapi_filter_get_tone_map_default (postproc->filter) ==
+        postproc->tonemap)
+      postproc->flags &= ~(GST_VAAPI_POSTPROC_FLAG_TONE_MAP);
+  }
+
   if (postproc->flags & GST_VAAPI_POSTPROC_FLAG_CROP)
     if ((postproc->crop_left | postproc->crop_right | postproc->crop_top
             | postproc->crop_bottom) == 0)
@@ -763,6 +773,23 @@ rotate_crop_meta (GstVaapiPostproc * const postproc, const GstVideoMeta * vmeta,
 }
 
 static GstFlowReturn
+set_tone_map_meta (GstVaapiPostproc * postproc)
+{
+  if (postproc->flags & GST_VAAPI_POSTPROC_FLAG_TONE_MAP) {
+    GstVideoMasteringDisplayInfo minfo;
+    GstVideoContentLightLevel linfo;
+    GstCaps *sinkcaps = GST_VAAPI_PLUGIN_BASE_SINK_PAD_CAPS (postproc);
+
+    gst_video_mastering_display_info_from_caps (&minfo, sinkcaps);
+    gst_video_content_light_level_from_caps (&linfo, sinkcaps);
+    if (!gst_vaapi_filter_set_tone_map_meta (postproc->filter, &minfo, &linfo))
+      return GST_FLOW_ERROR;
+  }
+
+  return GST_FLOW_OK;
+}
+
+static GstFlowReturn
 gst_vaapipostproc_process_vpp (GstBaseTransform * trans, GstBuffer * inbuf,
     GstBuffer * outbuf)
 {
@@ -781,6 +808,10 @@ gst_vaapipostproc_process_vpp (GstBaseTransform * trans, GstBuffer * inbuf,
   const GstVideoCropMeta *crop_meta;
   GstVaapiRectangle *crop_rect = NULL;
   GstVaapiRectangle tmp_rect;
+
+  ret = set_tone_map_meta (postproc);
+  if (ret != GST_FLOW_OK)
+    goto error_tone_map;
 
   inbuf_meta = gst_buffer_get_vaapi_video_meta (inbuf);
   if (!inbuf_meta)
@@ -970,6 +1001,12 @@ gst_vaapipostproc_process_vpp (GstBaseTransform * trans, GstBuffer * inbuf,
   return GST_FLOW_OK;
 
   /* ERRORS */
+
+error_tone_map:
+  {
+    GST_ERROR_OBJECT (postproc, "failed to set tone mapping meta");
+    return GST_FLOW_ERROR;
+  }
 error_invalid_buffer:
   {
     GST_ERROR_OBJECT (postproc, "failed to validate source buffer");
@@ -2023,6 +2060,10 @@ gst_vaapipostproc_set_property (GObject * object,
       postproc->crop_bottom = g_value_get_uint (value);
       postproc->flags |= GST_VAAPI_POSTPROC_FLAG_CROP;
       break;
+    case PROP_TONE_MAP:
+      postproc->tonemap = g_value_get_boolean (value);
+      postproc->flags |= GST_VAAPI_POSTPROC_FLAG_TONE_MAP;
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2102,6 +2143,9 @@ gst_vaapipostproc_get_property (GObject * object,
       break;
     case PROP_CROP_BOTTOM:
       g_value_set_uint (value, postproc->crop_bottom);
+      break;
+    case PROP_TONE_MAP:
+      g_value_set_boolean (value, postproc->tonemap);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2384,6 +2428,11 @@ gst_vaapipostproc_class_init (GstVaapiPostprocClass * klass)
   if (filter_op)
     g_object_class_install_property (object_class,
         PROP_VIDEO_DIRECTION, filter_op->pspec);
+
+  filter_op = find_filter_op (filter_ops, GST_VAAPI_FILTER_OP_TONE_MAP);
+  if (filter_op)
+    g_object_class_install_property (object_class,
+        PROP_TONE_MAP, filter_op->pspec);
 
 #ifndef GST_REMOVE_DEPRECATED
   /**
