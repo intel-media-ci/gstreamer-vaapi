@@ -314,7 +314,7 @@ gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
 {
   GstVideoDecoder *const vdec = GST_VIDEO_DECODER (decode);
   GstPad *const srcpad = GST_VIDEO_DECODER_SRC_PAD (vdec);
-  GstCaps *allowed;
+  GstCaps *allowed_caps;
   GstVideoCodecState *state, *ref_state;
   GstVaapiCapsFeature feature;
   GstCapsFeatures *features;
@@ -323,35 +323,14 @@ gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
   GstVideoFormat format;
   GstClockTime latency;
   gint fps_d, fps_n;
-  guint width, height;
+  guint size, i, width, height;
   const gchar *format_str, *feature_str;
+  GstStructure *structure;
 
   if (!decode->input_state)
     return FALSE;
 
   ref_state = decode->input_state;
-
-  format = GST_VIDEO_INFO_FORMAT (&decode->decoded_info);
-  allowed = gst_vaapidecode_get_allowed_srcpad_caps (decode);
-  feature = gst_vaapi_find_preferred_caps_feature (srcpad, allowed, &format);
-  gst_caps_unref (allowed);
-
-  if (feature == GST_VAAPI_CAPS_FEATURE_NOT_NEGOTIATED)
-    return FALSE;
-
-#if (!USE_GLX && !USE_EGL)
-  /* This is a very pathological situation. Should not happen. */
-  if (feature == GST_VAAPI_CAPS_FEATURE_GL_TEXTURE_UPLOAD_META)
-    return FALSE;
-#endif
-
-  if ((feature == GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY ||
-          feature == GST_VAAPI_CAPS_FEATURE_VAAPI_SURFACE)
-      && format != GST_VIDEO_INFO_FORMAT (&decode->decoded_info)) {
-    GST_FIXME_OBJECT (decode, "validate if driver can convert from %s to %s",
-        gst_video_format_to_string (GST_VIDEO_INFO_FORMAT
-            (&decode->decoded_info)), gst_video_format_to_string (format));
-  }
 
   width = decode->display_width;
   height = decode->display_height;
@@ -359,6 +338,59 @@ gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
   if (!width || !height) {
     width = GST_VIDEO_INFO_WIDTH (&ref_state->info);
     height = GST_VIDEO_INFO_HEIGHT (&ref_state->info);
+  }
+
+  allowed_caps = gst_pad_get_allowed_caps (srcpad);
+  GST_INFO_OBJECT (decode, "allowed src pad caps %" GST_PTR_FORMAT,
+      allowed_caps);
+  size = gst_caps_get_size (allowed_caps);
+  for (i = 0; i < size; i++) {
+    structure = gst_caps_get_structure (allowed_caps, i);
+    if (!structure)
+      continue;
+    gst_structure_set (structure, "width", G_TYPE_INT, width, "height",
+        G_TYPE_INT, height, "framerate", GST_TYPE_FRACTION,
+        GST_VIDEO_INFO_FPS_N (&ref_state->info),
+        GST_VIDEO_INFO_FPS_D (&ref_state->info), NULL);
+  }
+  if (gst_caps_is_empty (allowed_caps)) {
+    gst_caps_unref (allowed_caps);
+    return FALSE;
+  }
+  allowed_caps = gst_caps_fixate (allowed_caps);
+  GST_INFO_OBJECT (decode, "fixated allowed src pad caps %" GST_PTR_FORMAT,
+      allowed_caps);
+  if (gst_caps_is_any (allowed_caps)) {
+    gst_caps_unref (allowed_caps);
+    return FALSE;
+  }
+  {
+    const gchar *format_str;
+    const guint feature_list[] = { GST_VAAPI_CAPS_FEATURE_VAAPI_SURFACE,
+      GST_VAAPI_CAPS_FEATURE_DMABUF,
+      GST_VAAPI_CAPS_FEATURE_GL_TEXTURE_UPLOAD_META,
+      GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY,
+    };
+
+    structure = gst_caps_get_structure (allowed_caps, 0);
+    format_str = gst_structure_get_string (structure, "format");
+    format = gst_video_format_from_string (format_str);
+
+    feature = GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY;
+    for (i = 0; i < G_N_ELEMENTS (feature_list); i++) {
+      if (gst_vaapi_caps_feature_contains (allowed_caps, feature_list[i])) {
+        feature = feature_list[i];
+        break;
+      }
+    }
+  }
+  gst_caps_unref (allowed_caps);
+
+  if (feature == GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY
+      && format != GST_VIDEO_INFO_FORMAT (&decode->decoded_info)) {
+    GST_FIXME_OBJECT (decode, "validate if driver can convert from %s to %s",
+        gst_video_format_to_string (GST_VIDEO_INFO_FORMAT
+            (&decode->decoded_info)), gst_video_format_to_string (format));
   }
 
   state = gst_video_decoder_set_output_state (vdec, format, width, height,
