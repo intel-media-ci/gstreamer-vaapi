@@ -219,6 +219,7 @@ caps_set_width_and_height_range (GstCaps * caps, gint min_width,
 static gboolean
 gst_vaapidecode_ensure_allowed_srcpad_caps (GstVaapiDecode * decode)
 {
+  GstVaapiDisplay *const display = GST_VAAPI_PLUGIN_BASE_DISPLAY (decode);
   GstCaps *out_caps, *raw_caps, *va_caps, *dma_caps, *gltexup_caps, *base_caps;
   GArray *formats;
   gint min_width, min_height, max_width, max_height;
@@ -228,7 +229,7 @@ gst_vaapidecode_ensure_allowed_srcpad_caps (GstVaapiDecode * decode)
   if (decode->allowed_srcpad_caps)
     return TRUE;
 
-  if (!GST_VAAPI_PLUGIN_BASE_DISPLAY (decode))
+  if (!display)
     return FALSE;
 
   if (!decode->decoder)
@@ -240,6 +241,18 @@ gst_vaapidecode_ensure_allowed_srcpad_caps (GstVaapiDecode * decode)
       &min_width, &min_height, &max_width, &max_height, &mem_types);
   if (!formats)
     return FALSE;
+
+  /* this is a hack only needed by i965 jpeg decoder */
+  if (gst_vaapi_decoder_get_codec (decode->decoder) == GST_VAAPI_CODEC_JPEG
+      && gst_vaapi_display_has_driver_quirks (display,
+          GST_VAAPI_DRIVER_QUIRK_MISSING_DECODER_FORMATS)) {
+    GstVideoFormat fmt;
+
+    fmt = GST_VIDEO_FORMAT_YV12;
+    g_array_prepend_val (formats, fmt);
+    fmt = GST_VIDEO_FORMAT_NV12;
+    g_array_prepend_val (formats, fmt);
+  }
 
   base_caps = gst_vaapi_video_format_new_template_caps_from_list (formats);
   if (!base_caps)
@@ -269,14 +282,8 @@ gst_vaapidecode_ensure_allowed_srcpad_caps (GstVaapiDecode * decode)
   }
 #endif
 
-  raw_caps = gst_vaapi_plugin_base_get_allowed_srcpad_raw_caps
-      (GST_VAAPI_PLUGIN_BASE (decode),
-      GST_VIDEO_INFO_FORMAT (&decode->decoded_info));
-  if (raw_caps) {
-    raw_caps = gst_caps_copy (raw_caps);
-    caps_set_width_and_height_range (base_caps, min_width, min_height,
-        max_width, max_height);
-  }
+  raw_caps = base_caps;
+  base_caps = NULL;
 
   out_caps = va_caps;
   if (dma_caps)
