@@ -127,6 +127,7 @@ enum
   PROP_CROP_RIGHT,
   PROP_CROP_TOP,
   PROP_CROP_BOTTOM,
+  PROP_TONE_MAP,
 #ifndef GST_REMOVE_DEPRECATED
   PROP_SKIN_TONE_ENHANCEMENT,
 #endif
@@ -511,6 +512,35 @@ set_best_deint_method (GstVaapiPostproc * postproc, guint flags,
   }
   *deint_method_ptr = deint_method;
   return success;
+}
+
+static gboolean
+configure_tone_map (GstVaapiPostproc * const postproc)
+{
+  if (!gst_vaapi_filter_set_tone_map (postproc->filter, postproc->tone_map))
+    goto fail_configure_tone_map;
+
+  if (postproc->tone_map) {
+    GstVideoMasteringDisplayInfo minfo;
+    GstVideoContentLightLevel linfo;
+    GstCaps *sinkcaps = GST_VAAPI_PLUGIN_BASE_SINK_PAD_CAPS (postproc);
+
+    gst_video_mastering_display_info_from_caps (&minfo, sinkcaps);
+    gst_video_content_light_level_from_caps (&linfo, sinkcaps);
+
+    if (!gst_vaapi_filter_set_tone_map_meta (postproc->filter, &minfo, &linfo))
+      goto fail_configure_tone_map;
+
+    postproc->flags |= GST_VAAPI_POSTPROC_FLAG_TONE_MAP;
+  } else {
+    postproc->flags &= ~(GST_VAAPI_POSTPROC_FLAG_TONE_MAP);
+  }
+
+  return TRUE;
+
+fail_configure_tone_map:
+  postproc->flags &= ~(GST_VAAPI_POSTPROC_FLAG_TONE_MAP);
+  return FALSE;
 }
 
 static gboolean
@@ -1644,6 +1674,17 @@ gst_vaapipostproc_set_caps (GstBaseTransform * trans, GstCaps * caps,
       goto done;
   }
 
+  if (!gst_vaapi_filter_set_colorimetry (postproc->filter,
+          &GST_VIDEO_INFO_COLORIMETRY (GST_VAAPI_PLUGIN_BASE_SINK_PAD_INFO
+              (postproc)),
+          &GST_VIDEO_INFO_COLORIMETRY (GST_VAAPI_PLUGIN_BASE_SRC_PAD_INFO
+              (postproc))))
+    goto done;
+
+  if (!configure_tone_map (postproc))
+    GST_WARNING_OBJECT (postproc,
+        "Failed to configure tone mapping.  The driver may not support it.");
+
   if (!ensure_srcpad_buffer_pool (postproc, out_caps))
     goto done;
 
@@ -1654,11 +1695,7 @@ gst_vaapipostproc_set_caps (GstBaseTransform * trans, GstCaps * caps,
     gst_vaapipostproc_set_passthrough (trans);
   }
 
-  ret = gst_vaapi_filter_set_colorimetry (postproc->filter,
-      &GST_VIDEO_INFO_COLORIMETRY (GST_VAAPI_PLUGIN_BASE_SINK_PAD_INFO
-          (postproc)),
-      &GST_VIDEO_INFO_COLORIMETRY (GST_VAAPI_PLUGIN_BASE_SRC_PAD_INFO
-          (postproc)));
+  ret = TRUE;
 
 done:
   g_mutex_unlock (&postproc->postproc_lock);
@@ -2023,6 +2060,9 @@ gst_vaapipostproc_set_property (GObject * object,
       postproc->crop_bottom = g_value_get_uint (value);
       postproc->flags |= GST_VAAPI_POSTPROC_FLAG_CROP;
       break;
+    case PROP_TONE_MAP:
+      postproc->tone_map = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2102,6 +2142,9 @@ gst_vaapipostproc_get_property (GObject * object,
       break;
     case PROP_CROP_BOTTOM:
       g_value_set_uint (value, postproc->crop_bottom);
+      break;
+    case PROP_TONE_MAP:
+      g_value_set_boolean (value, postproc->tone_map);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2384,6 +2427,16 @@ gst_vaapipostproc_class_init (GstVaapiPostprocClass * klass)
   if (filter_op)
     g_object_class_install_property (object_class,
         PROP_VIDEO_DIRECTION, filter_op->pspec);
+
+  /**
+   * GstVaapiPostproc:tone-map:
+   *
+   * Apply the HDR tone mapping algorithm.
+   */
+  filter_op = find_filter_op (filter_ops, GST_VAAPI_FILTER_OP_TONE_MAP);
+  if (filter_op)
+    g_object_class_install_property (object_class,
+        PROP_TONE_MAP, filter_op->pspec);
 
 #ifndef GST_REMOVE_DEPRECATED
   /**
