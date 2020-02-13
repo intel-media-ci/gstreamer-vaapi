@@ -35,6 +35,8 @@
 #define VA_ENC_PACKED_HEADER_H264_SEI VAEncPackedHeaderH264_SEI
 #endif
 
+#define VA_VPP_HDR10_SUPPORT VA_CHECK_VERSION(1,4,0)
+
 #include <va/va_compat.h>
 #include <va/va_drmcommon.h>
 
