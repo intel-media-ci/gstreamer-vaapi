@@ -32,6 +32,7 @@
 #include "gstvaapidecoder.h"
 #include "gstvaapidecoder_priv.h"
 #include "gstvaapiparser_frame.h"
+#include "gstvaapiprofilecaps.h"
 #include "gstvaapisurfaceproxy_priv.h"
 #include "gstvaapiutils.h"
 
@@ -1190,6 +1191,40 @@ gst_vaapi_decoder_update_caps (GstVaapiDecoder * decoder, GstCaps * caps)
   return FALSE;
 }
 
+static GstVaapiContext *
+create_context_from_caps (GstVaapiDecoder * decoder)
+{
+  GArray *available_decoders;
+  GstCaps *caps;
+  guint chroma_type;
+  GstVaapiProfile profile;
+  GstVaapiContextInfo cip = {
+    GST_VAAPI_CONTEXT_USAGE_DECODE, 0,
+    GST_VAAPI_ENTRYPOINT_VLD, 0,
+  };
+
+  if (!decoder->display)
+    return NULL;
+
+  caps = get_caps (decoder);
+  if (!caps)
+    return NULL;
+
+  chroma_type = gst_vaapi_chroma_type_from_caps (caps);
+
+  available_decoders = gst_vaapi_display_get_decode_profiles (decoder->display);
+  profile = gst_vaapi_profile_from_caps (caps, available_decoders);
+  g_clear_pointer (&available_decoders, g_array_unref);
+
+  if (chroma_type == 0 || profile == GST_VAAPI_PROFILE_UNKNOWN)
+    return NULL;
+
+  cip.profile = profile;
+  cip.chroma_type = chroma_type;
+
+  return gst_vaapi_context_new (decoder->display, &cip);
+}
+
 /**
  * gst_vaapi_decoder_get_surface_attributres:
  * @decoder: a #GstVaapiDecoder instances
@@ -1207,17 +1242,25 @@ gst_vaapi_decoder_get_surface_attributes (GstVaapiDecoder * decoder,
     gint * min_width, gint * min_height, gint * max_width, gint * max_height,
     guint * mem_types)
 {
-  gboolean ret;
+  gboolean ret, test_ctxt = FALSE;
+  GstVaapiContext *context = NULL;
   GstVaapiConfigSurfaceAttributes attribs = { 0, };
 
   g_return_val_if_fail (decoder != NULL, FALSE);
 
-  if (!decoder->context)
-    return NULL;
+  context = decoder->context;
+  if (!context) {
+    context = create_context_from_caps (decoder);
+    if (!context)
+      return NULL;
+    test_ctxt = TRUE;
+  }
 
-  ret = gst_vaapi_context_get_surface_attributes (decoder->context, &attribs);
+  ret = gst_vaapi_context_get_surface_attributes (context, &attribs);
   if (ret)
-    attribs.formats = gst_vaapi_context_get_surface_formats (decoder->context);
+    attribs.formats = gst_vaapi_context_get_surface_formats (context);
+  if (test_ctxt)
+    gst_vaapi_context_unref (context);
 
   if (attribs.formats->len == 0) {
     g_array_unref (attribs.formats);
