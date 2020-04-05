@@ -29,6 +29,7 @@
 #include "gstvaapicompat.h"
 #include "gstvaapicontext.h"
 #include "gstvaapiprofilecaps.h"
+#include "gstvaapisurface.h"
 #include "gstvaapiutils.h"
 
 static gboolean
@@ -132,4 +133,57 @@ gboolean
 gst_vaapi_mem_type_supports (guint va_mem_types, guint mem_type)
 {
   return ((va_mem_types & from_GstVaapiBufferMemoryType (mem_type)) != 0);
+}
+
+/**
+ * gst_vaapi_chroma_type_from_caps:
+ * @caps: the #GstCaps where to extract the chromatype
+ *
+ * Try to extract the #GstVaapiChromaType from @caps
+ *
+ * Returns: the #GstVaapiChromaType from @caps,
+ *   %GST_VAAPI_CHROMA_TYPE_YUV420 if they are not specified,
+ *   or 0 if caps are inconsistent or undefined.
+ **/
+guint
+gst_vaapi_chroma_type_from_caps (const GstCaps * caps)
+{
+  GstStructure *st = gst_caps_get_structure (caps, 0);
+  const gchar *chroma_format;
+  guint depth = 0;
+
+  if (!gst_structure_has_field (st, "chroma-format"))
+    return GST_VAAPI_CHROMA_TYPE_YUV420;
+
+  chroma_format = gst_structure_get_string (st, "chroma-format");
+
+  if (!gst_structure_get_uint (st, "bit-depth-chroma", &depth))
+    depth = 8;
+
+  if (g_strcmp0 (chroma_format, "4:0:0") == 0) {
+    return GST_VAAPI_CHROMA_TYPE_YUV400;
+  } else if (g_strcmp0 (chroma_format, "4:2:0") == 0) {
+    if (depth == 8)
+      return GST_VAAPI_CHROMA_TYPE_YUV420;
+    if (depth == 10)
+      return GST_VAAPI_CHROMA_TYPE_YUV420_10BPP;
+    else if (depth == 12)
+      return GST_VAAPI_CHROMA_TYPE_YUV420_12BPP;
+  } else if (g_strcmp0 (chroma_format, "4:2:2") == 0) {
+    if (depth == 8)
+      return GST_VAAPI_CHROMA_TYPE_YUV422;
+    else if (depth == 10)
+      return GST_VAAPI_CHROMA_TYPE_YUV422_10BPP;
+    else if (depth == 12)
+      return GST_VAAPI_CHROMA_TYPE_YUV422_12BPP;
+  } else if (g_strcmp0 (chroma_format, "4:4:4") == 0) {
+    if (depth == 8)
+      return GST_VAAPI_CHROMA_TYPE_YUV444;
+    else if (depth == 10)
+      return GST_VAAPI_CHROMA_TYPE_YUV444_10BPP;
+    else if (depth == 12)
+      return GST_VAAPI_CHROMA_TYPE_YUV444_12BPP;
+  }
+
+  return 0;
 }

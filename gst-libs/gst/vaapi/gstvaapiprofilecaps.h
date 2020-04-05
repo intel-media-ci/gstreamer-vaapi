@@ -36,6 +36,9 @@ gst_vaapi_profile_caps_append_decoder (GstVaapiDisplay * display,
 gboolean
 gst_vaapi_mem_type_supports (guint va_mem_types, guint mem_type);
 
+guint
+gst_vaapi_chroma_type_from_caps (const GstCaps * caps);
+
 G_END_DECLS
 
 #endif /* GST_VAAPI_PROFILE_CAPS_H */
