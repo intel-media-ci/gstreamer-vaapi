@@ -79,27 +79,9 @@ GST_DEBUG_CATEGORY_STATIC (gst_vaapi_h264_encode_debug);
   "alignment = (string) au"
 
 /* *INDENT-OFF* */
-static const char gst_vaapiencode_h264_sink_caps_str[] =
-  GST_VAAPI_MAKE_SURFACE_CAPS ", "
-  GST_CAPS_INTERLACED_FALSE "; "
-  GST_VIDEO_CAPS_MAKE (GST_VAAPI_FORMATS_ALL) ", "
-  GST_CAPS_INTERLACED_FALSE ";"
-  GST_VIDEO_CAPS_MAKE_WITH_FEATURES(GST_CAPS_FEATURE_MEMORY_DMABUF, GST_VAAPI_FORMATS_ALL) ","
-  GST_CAPS_INTERLACED_FALSE;
-/* *INDENT-ON* */
-
-/* *INDENT-OFF* */
 static const char gst_vaapiencode_h264_src_caps_str[] =
   GST_CODEC_CAPS ", "
   "profile = (string) { constrained-baseline, baseline, main, high, multiview-high, stereo-high }";
-/* *INDENT-ON* */
-
-/* *INDENT-OFF* */
-static GstStaticPadTemplate gst_vaapiencode_h264_sink_factory =
-  GST_STATIC_PAD_TEMPLATE ("sink",
-      GST_PAD_SINK,
-      GST_PAD_ALWAYS,
-      GST_STATIC_CAPS (gst_vaapiencode_h264_sink_caps_str));
 /* *INDENT-ON* */
 
 /* *INDENT-OFF* */
@@ -111,7 +93,8 @@ static GstStaticPadTemplate gst_vaapiencode_h264_src_factory =
 /* *INDENT-ON* */
 
 /* h264 encode */
-G_DEFINE_TYPE (GstVaapiEncodeH264, gst_vaapiencode_h264, GST_TYPE_VAAPIENCODE);
+static GType encode_type = G_TYPE_INVALID;
+static GstElementClass *parent_class = NULL;
 
 static void
 gst_vaapiencode_h264_init (GstVaapiEncodeH264 * encode)
@@ -125,7 +108,7 @@ gst_vaapiencode_h264_finalize (GObject * object)
   GstVaapiEncodeH264 *const encode = GST_VAAPIENCODE_H264_CAST (object);
 
   gst_caps_replace (&encode->available_caps, NULL);
-  G_OBJECT_CLASS (gst_vaapiencode_h264_parent_class)->finalize (object);
+  G_OBJECT_CLASS (parent_class)->finalize (object);
 }
 
 static GArray *
@@ -544,9 +527,8 @@ gst_vaapiencode_h264_alloc_buffer (GstVaapiEncode * base_encode,
 
   g_return_val_if_fail (encoder != NULL, GST_FLOW_ERROR);
 
-  ret =
-      GST_VAAPIENCODE_CLASS (gst_vaapiencode_h264_parent_class)->alloc_buffer
-      (base_encode, coded_buf, out_buffer_ptr);
+  ret = GST_VAAPIENCODE_CLASS (parent_class)->alloc_buffer (base_encode,
+      coded_buf, out_buffer_ptr);
   if (ret != GST_FLOW_OK)
     return ret;
 
@@ -568,15 +550,15 @@ error_convert_buffer:
 }
 
 static void
-gst_vaapiencode_h264_class_init (GstVaapiEncodeH264Class * klass)
+gst_vaapiencode_h264_class_init (GstVaapiEncodeH264Class * klass, gpointer data)
 {
   GObjectClass *const object_class = G_OBJECT_CLASS (klass);
   GstElementClass *const element_class = GST_ELEMENT_CLASS (klass);
   GstVaapiEncodeClass *const encode_class = GST_VAAPIENCODE_CLASS (klass);
+  GstCaps *sink_caps = GST_CAPS_CAST (data);
   gpointer encoder_class;
 
-  GST_DEBUG_CATEGORY_INIT (gst_vaapi_h264_encode_debug,
-      GST_PLUGIN_NAME, 0, GST_PLUGIN_DESC);
+  parent_class = g_type_class_peek_parent (klass);
 
   object_class->finalize = gst_vaapiencode_h264_finalize;
   object_class->set_property = gst_vaapiencode_set_property_subclass;
@@ -595,8 +577,10 @@ gst_vaapiencode_h264_class_init (GstVaapiEncodeH264Class * klass)
       GST_PLUGIN_DESC, "Wind Yuan <feng.yuan@intel.com>");
 
   /* sink pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapiencode_h264_sink_factory);
+  g_assert (sink_caps);
+  gst_element_class_add_pad_template (element_class,
+      gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS, sink_caps));
+  gst_caps_unref (sink_caps);
 
   /* src pad */
   gst_element_class_add_static_pad_template (element_class,
@@ -606,4 +590,54 @@ gst_vaapiencode_h264_class_init (GstVaapiEncodeH264Class * klass)
   g_assert (encoder_class);
   gst_vaapiencode_class_install_properties (encode_class, encoder_class);
   g_type_class_unref (encoder_class);
+}
+
+GType
+gst_vaapiencode_h264_register_type (GstVaapiDisplay * display)
+{
+  GstCaps *caps;
+  guint i;
+  GTypeInfo type_info = {
+    sizeof (GstVaapiEncodeClass),
+    NULL,
+    NULL,
+    (GClassInitFunc) gst_vaapiencode_h264_class_init,
+    NULL,
+    NULL,
+    sizeof (GstVaapiEncodeH264),
+    0,
+    (GInstanceInitFunc) gst_vaapiencode_h264_init,
+  };
+
+  GST_DEBUG_CATEGORY_INIT (gst_vaapi_h264_encode_debug,
+      GST_PLUGIN_NAME, 0, GST_PLUGIN_DESC);
+
+  caps = gst_vaapiencode_detect_codec_input_caps (display,
+      GST_VAAPI_CODEC_H264, NULL);
+  if (!caps) {
+    GST_ERROR ("failed to get sink caps for h264 encode, can not register");
+    return G_TYPE_INVALID;
+  }
+
+  for (i = 0; i < gst_caps_get_size (caps); i++) {
+    GstStructure *structure = gst_caps_get_structure (caps, i);
+    if (!structure)
+      continue;
+    gst_structure_set (structure, "interlace-mode", G_TYPE_STRING,
+        "progressive", NULL);
+  }
+  GST_DEBUG ("h264 encode's sink caps %" GST_PTR_FORMAT, caps);
+
+  type_info.class_data = caps;
+  encode_type = g_type_register_static (GST_TYPE_VAAPIENCODE,
+      "GstVaapiEncodeH264", &type_info, 0);
+
+  return encode_type;
+}
+
+GType
+gst_vaapiencode_h264_get_type (void)
+{
+  g_assert (encode_type != G_TYPE_INVALID);
+  return encode_type;
 }

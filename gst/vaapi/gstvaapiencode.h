@@ -98,6 +98,11 @@ gboolean
 gst_vaapiencode_class_install_properties (GstVaapiEncodeClass * klass,
     GObjectClass * encoder_class);
 
+G_GNUC_INTERNAL
+GstCaps *
+gst_vaapiencode_detect_codec_input_caps (GstVaapiDisplay * display,
+    GstVaapiCodec codec, GArray * extra_fmts);
+
 G_END_DECLS
 
 #endif /* GST_VAAPIENCODE_H */

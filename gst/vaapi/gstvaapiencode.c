@@ -25,6 +25,8 @@
 #include <gst/vaapi/gstvaapivalue.h>
 #include <gst/vaapi/gstvaapidisplay.h>
 #include <gst/vaapi/gstvaapiprofilecaps.h>
+#include <gst/vaapi/gstvaapiutils_core.h>
+#include <gst/vaapi/gstvaapiutils.h>
 #include "gstvaapiencode.h"
 #include "gstvaapipluginutil.h"
 #include "gstvaapivideometa.h"
@@ -354,17 +356,56 @@ get_profiles (GstVaapiEncode * encode)
   return profiles;
 }
 
-static gboolean
-ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
+static GstCaps *
+make_caps_by_formats (GArray * formats, gint min_width, gint min_height,
+    gint max_width, gint max_height, gboolean support_dma)
 {
   GstCaps *out_caps = NULL;
   GstCaps *raw_caps = NULL;
   GstCaps *va_caps, *dma_caps;
+  guint i, size;
+  GstStructure *structure;
+
+  raw_caps = gst_vaapi_video_format_new_template_caps_from_list (formats);
+  if (!raw_caps)
+    return NULL;
+
+  /* Set the width/height info to caps */
+  size = gst_caps_get_size (raw_caps);
+  for (i = 0; i < size; i++) {
+    structure = gst_caps_get_structure (raw_caps, i);
+    if (!structure)
+      continue;
+    gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, min_width,
+        max_width, "height", GST_TYPE_INT_RANGE, min_height, max_height, NULL);
+  }
+
+  out_caps = gst_caps_copy (raw_caps);
+
+  va_caps = gst_caps_copy (raw_caps);
+  gst_caps_set_features_simple (va_caps,
+      gst_caps_features_from_string (GST_CAPS_FEATURE_MEMORY_VAAPI_SURFACE));
+  gst_caps_append (out_caps, va_caps);
+
+  if (support_dma) {
+    dma_caps = gst_caps_copy (raw_caps);
+    gst_caps_set_features_simple (dma_caps,
+        gst_caps_features_from_string (GST_CAPS_FEATURE_MEMORY_DMABUF));
+    gst_caps_append (out_caps, dma_caps);
+  }
+
+  gst_caps_unref (raw_caps);
+
+  return out_caps;
+}
+
+static gboolean
+ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
+{
+  GstCaps *out_caps = NULL;
   GArray *formats = NULL;
   gboolean ret = FALSE;
   GArray *profiles = NULL;
-  guint i, size;
-  GstStructure *structure;
   gint min_width, min_height, max_width, max_height;
   guint mem_types;
 
@@ -385,34 +426,11 @@ ensure_allowed_sinkpad_caps (GstVaapiEncode * encode)
   if (!formats)
     goto failed_get_attributes;
 
-  raw_caps = gst_vaapi_video_format_new_template_caps_from_list (formats);
-  if (!raw_caps)
-    goto failed_create_raw_caps;
-
-  /* Set the width/height info to caps */
-  size = gst_caps_get_size (raw_caps);
-  for (i = 0; i < size; i++) {
-    structure = gst_caps_get_structure (raw_caps, i);
-    if (!structure)
-      continue;
-    gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, min_width,
-        max_width, "height", GST_TYPE_INT_RANGE, min_height, max_height, NULL);
-  }
-
-  out_caps = gst_caps_copy (raw_caps);
-
-  va_caps = gst_caps_copy (raw_caps);
-  gst_caps_set_features_simple (va_caps,
-      gst_caps_features_from_string (GST_CAPS_FEATURE_MEMORY_VAAPI_SURFACE));
-  gst_caps_append (out_caps, va_caps);
-
-  if (gst_vaapi_mem_type_supports (mem_types,
-          GST_VAAPI_BUFFER_MEMORY_TYPE_DMA_BUF)) {
-    dma_caps = gst_caps_copy (raw_caps);
-    gst_caps_set_features_simple (dma_caps,
-        gst_caps_features_from_string (GST_CAPS_FEATURE_MEMORY_DMABUF));
-    gst_caps_append (out_caps, dma_caps);
-  }
+  out_caps = make_caps_by_formats (formats, min_width, min_height,
+      max_width, max_height, gst_vaapi_mem_type_supports (mem_types,
+          GST_VAAPI_BUFFER_MEMORY_TYPE_DMA_BUF));
+  if (!out_caps)
+    goto failed_create_caps;
 
   gst_caps_replace (&encode->allowed_sinkpad_caps, out_caps);
   GST_INFO_OBJECT (encode, "Allowed sink caps %" GST_PTR_FORMAT,
@@ -428,8 +446,6 @@ bail:
     g_array_unref (profiles);
   if (out_caps)
     gst_caps_unref (out_caps);
-  if (raw_caps)
-    gst_caps_unref (raw_caps);
   if (formats)
     g_array_unref (formats);
   return ret;
@@ -439,9 +455,9 @@ failed_get_attributes:
     GST_WARNING_OBJECT (encode, "failed to get surface attributes");
     goto bail;
   }
-failed_create_raw_caps:
+failed_create_caps:
   {
-    GST_WARNING_OBJECT (encode, "failed to create raw sink caps");
+    GST_WARNING_OBJECT (encode, "failed to create sink caps");
     goto bail;
   }
 failed_get_profiles:
@@ -1066,4 +1082,86 @@ gst_vaapiencode_class_install_properties (GstVaapiEncodeClass * klass,
   g_free (specs);
   klass->prop_num = PROP_BASE + 1 + installed;
   return TRUE;
+}
+
+GstCaps *
+gst_vaapiencode_detect_codec_input_caps (GstVaapiDisplay * display,
+    GstVaapiCodec codec, GArray * extra_fmts)
+{
+  GArray *profiles = NULL;
+  GArray *supported_fmts = NULL;
+  GstCaps *out_caps = NULL;
+  guint i, e;
+  GstVaapiProfile profile;
+  guint value;
+  guint chroma;
+  GstVaapiChromaType gst_chroma;
+
+  profiles = gst_vaapi_display_get_encode_profiles (display);
+  if (!profiles)
+    goto out;
+
+  chroma = 0;
+  for (i = 0; i < profiles->len; i++) {
+    profile = g_array_index (profiles, GstVaapiProfile, i);
+    if (gst_vaapi_profile_get_codec (profile) != codec)
+      continue;
+
+    for (e = GST_VAAPI_ENTRYPOINT_SLICE_ENCODE;
+        e <= GST_VAAPI_ENTRYPOINT_SLICE_ENCODE_LP; e++) {
+      if (gst_vaapi_display_has_encoder (display, profile, e)) {
+        if (!gst_vaapi_get_config_attribute (display,
+                gst_vaapi_profile_get_va_profile (profile),
+                gst_vaapi_entrypoint_get_va_entrypoint (e),
+                VAConfigAttribRTFormat, &value))
+          continue;
+
+        chroma |= value;
+      }
+    }
+  }
+
+  if (!chroma)
+    goto out;
+
+  for (gst_chroma = GST_VAAPI_CHROMA_TYPE_YUV420;
+      gst_chroma <= GST_VAAPI_CHROMA_TYPE_YUV444_12BPP; gst_chroma++) {
+    GArray *fmts;
+    if (!(chroma & from_GstVaapiChromaType (gst_chroma)))
+      continue;
+
+    fmts = gst_vaapi_video_format_get_formats_by_chroma (gst_chroma);
+    if (!fmts)
+      continue;
+
+    /* One format can not belong to different chroma, no need to merge */
+    if (supported_fmts == NULL) {
+      supported_fmts = fmts;
+    } else {
+      for (i = 0; i < fmts->len; i++)
+        g_array_append_val (supported_fmts,
+            g_array_index (fmts, GstVideoFormat, i));
+      g_array_unref (fmts);
+    }
+  }
+
+  if (extra_fmts) {
+    for (i = 0; i < extra_fmts->len; i++)
+      g_array_append_val (supported_fmts,
+          g_array_index (extra_fmts, GstVideoFormat, i));
+  }
+
+  if (!supported_fmts)
+    goto out;
+
+  out_caps = make_caps_by_formats (supported_fmts, 1, 1, GST_CAPS_MAX_WIDTH,
+      GST_CAPS_MAX_HEIGHT, TRUE);
+
+out:
+  if (profiles)
+    g_array_unref (profiles);
+  if (supported_fmts)
+    g_array_unref (supported_fmts);
+
+  return out_caps;
 }

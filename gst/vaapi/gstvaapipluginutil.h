@@ -105,6 +105,8 @@ gst_vaapi_caps_feature_contains (const GstCaps * caps,
     "interlace-mode = (string){ progressive, interleaved, mixed }"
 # define GST_CAPS_INTERLACED_FALSE \
     "interlace-mode = (string)progressive"
+# define GST_CAPS_MAX_WIDTH 2147483647
+# define GST_CAPS_MAX_HEIGHT 2147483647
 
 #define GST_VAAPI_MAKE_SURFACE_CAPS                                     \
     GST_VIDEO_CAPS_MAKE_WITH_FEATURES(                                  \
