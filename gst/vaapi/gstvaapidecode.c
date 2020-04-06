@@ -321,24 +321,20 @@ gst_vaapidecode_get_allowed_srcpad_caps (GstVaapiDecode * decode)
 static gboolean
 gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
 {
-  GstVideoDecoder *const vdec = GST_VIDEO_DECODER (decode);
-  GstPad *const srcpad = GST_VIDEO_DECODER_SRC_PAD (vdec);
-  GstCaps *filter_caps, *allowed_caps, *proposed_caps;
-  GstVideoCodecState *state, *ref_state;
+  GstPad *const srcpad = GST_VIDEO_DECODER_SRC_PAD (decode);
+  GstCaps *allowed_caps, *srcpad_caps, *filter_caps, *proposed_caps;
   GstVaapiCapsFeature feature;
-  GstCapsFeatures *features;
-  GstCaps *allocation_caps;
-  GstVideoInfo *vi;
   GstVideoFormat format;
-  GstClockTime latency;
-  gint fps_d, fps_n;
-  guint width, height;
-  const gchar *format_str, *feature_str;
+  gint width, height, fps_n, fps_d;
 
   if (!decode->input_state)
     return FALSE;
 
-  ref_state = decode->input_state;
+  width = GST_VIDEO_INFO_WIDTH (&decode->input_state->info);
+  height = GST_VIDEO_INFO_HEIGHT (&decode->input_state->info);
+  fps_n = GST_VIDEO_INFO_FPS_N (&decode->input_state->info);
+  fps_d = GST_VIDEO_INFO_FPS_D (&decode->input_state->info);
+  g_assert (width > 0 && height > 0);
 
   allowed_caps = gst_pad_get_allowed_caps (srcpad);
   if (!allowed_caps)
@@ -350,24 +346,15 @@ gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
   GST_DEBUG_OBJECT (decode, "allowed peer caps: %" GST_PTR_FORMAT,
       allowed_caps);
 
-  format = GST_VIDEO_INFO_FORMAT (&decode->decoded_info);
-  width = decode->display_width;
-  height = decode->display_height;
-  if (!width || !height) {
-    width = GST_VIDEO_INFO_WIDTH (&ref_state->info);
-    height = GST_VIDEO_INFO_HEIGHT (&ref_state->info);
-  }
-
   /* This filter caps are an assumption of the output stream based in
    * the input state. It is used to choose an approximate caps from
    * the allowed peer caps */
   filter_caps = gst_caps_new_simple ("video/x-raw", "width", G_TYPE_INT,
       width, "height", G_TYPE_INT, height, "framerate", GST_TYPE_FRACTION,
-      GST_VIDEO_INFO_FPS_N (&ref_state->info),
-      GST_VIDEO_INFO_FPS_D (&ref_state->info), "interlace-mode", G_TYPE_STRING,
+      fps_n, fps_d, "interlace-mode", G_TYPE_STRING,
       gst_video_interlace_mode_to_string (GST_VIDEO_INFO_INTERLACE_MODE
-          (&ref_state->info)), NULL);
-  gst_caps_set_features (filter_caps, 0, gst_caps_features_new_any ());
+          (&decode->input_state->info)), NULL);
+  gst_caps_set_features_simple (filter_caps, gst_caps_features_new_any ());
 
   proposed_caps = gst_caps_intersect_full (allowed_caps, filter_caps,
       GST_CAPS_INTERSECT_FIRST);
@@ -391,50 +378,75 @@ gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
     return FALSE;
 #endif
 
-  if ((feature == GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY ||
-          feature == GST_VAAPI_CAPS_FEATURE_VAAPI_SURFACE)
+  /* same as above but with color preferred format and caps feature */
+  srcpad_caps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
+      gst_video_format_to_string (format), "width", G_TYPE_INT, width,
+      "height", G_TYPE_INT, height, "framerate", GST_TYPE_FRACTION, fps_n,
+      fps_d, "interlace-mode", G_TYPE_STRING, gst_video_interlace_mode_to_string
+      (GST_VIDEO_INFO_INTERLACE_MODE (&decode->input_state->info)), NULL);
+  gst_caps_set_features_simple (srcpad_caps,
+      gst_caps_features_new (gst_vaapi_caps_feature_to_string (feature), NULL));
+  GST_INFO_OBJECT (decode, "src pad caps %" GST_PTR_FORMAT, srcpad_caps);
+  decode->srcpad_caps = srcpad_caps;
+
+  return TRUE;
+}
+
+static gboolean
+gst_vaapidecode_set_output_state (GstVaapiDecode * decode)
+{
+  GstVideoDecoder *const vdec = GST_VIDEO_DECODER (decode);
+  GstVideoCodecState *state;
+  GstCaps *allocation_caps;
+  GstCapsFeatures *features;
+  GstVideoFormat format;
+  GstClockTime latency;
+  const gchar *format_str;
+  gint fps_n, fps_d;
+
+  /* caps negotiation failed */
+  if (!decode->srcpad_caps)
+    return FALSE;
+
+  if (decode->display_width == 0 || decode->display_height == 0)
+    return FALSE;
+
+  /* get preferred caps feature and format */
+  {
+    GstStructure *structure;
+
+    structure = gst_caps_get_structure (decode->srcpad_caps, 0);
+    format_str = gst_structure_get_string (structure, "format");
+    format = gst_video_format_from_string (format_str);
+
+    features = gst_caps_get_features (decode->srcpad_caps, 0);
+  }
+
+  if ((gst_vaapi_caps_feature_contains (decode->srcpad_caps,
+              GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY)
+          || gst_vaapi_caps_feature_contains (decode->srcpad_caps,
+              GST_VAAPI_CAPS_FEATURE_VAAPI_SURFACE))
       && format != GST_VIDEO_INFO_FORMAT (&decode->decoded_info)) {
     GST_FIXME_OBJECT (decode, "validate if driver can convert from %s to %s",
         gst_video_format_to_string (GST_VIDEO_INFO_FORMAT
             (&decode->decoded_info)), gst_video_format_to_string (format));
   }
 
-  state = gst_video_decoder_set_output_state (vdec, format, width, height,
-      ref_state);
+  state = gst_video_decoder_set_output_state (vdec, format,
+      decode->display_width, decode->display_height, decode->input_state);
   if (!state)
     return FALSE;
 
-  if (GST_VIDEO_INFO_WIDTH (&state->info) == 0
-      || GST_VIDEO_INFO_HEIGHT (&state->info) == 0) {
-    gst_video_codec_state_unref (state);
-    return FALSE;
-  }
-
-  vi = &state->info;
-  state->caps = gst_video_info_to_caps (vi);
-
-  switch (feature) {
-    case GST_VAAPI_CAPS_FEATURE_GL_TEXTURE_UPLOAD_META:
-    case GST_VAAPI_CAPS_FEATURE_DMABUF:
-    case GST_VAAPI_CAPS_FEATURE_VAAPI_SURFACE:{
-      GstStructure *structure = gst_caps_get_structure (state->caps, 0);
-      if (!structure)
-        break;
-      feature_str = gst_vaapi_caps_feature_to_string (feature);
-      features = gst_caps_features_new (feature_str, NULL);
-      gst_caps_set_features (state->caps, 0, features);
-      break;
-    }
-    default:
-      break;
-  }
+  state->caps = gst_video_info_to_caps (&state->info);
+  gst_caps_set_features (state->caps, 0, gst_caps_features_copy (features));
 
   /* Allocation query is different from pad's caps */
   allocation_caps = NULL;
-  if (GST_VIDEO_INFO_WIDTH (&decode->decoded_info) != width
-      || GST_VIDEO_INFO_HEIGHT (&decode->decoded_info) != height) {
+  if (GST_VIDEO_INFO_WIDTH (&decode->decoded_info) != decode->display_width
+      || GST_VIDEO_INFO_HEIGHT (&decode->decoded_info) !=
+      decode->display_height) {
+    const gchar *format_str = gst_video_format_to_string (format);
     allocation_caps = gst_caps_copy (state->caps);
-    format_str = gst_video_format_to_string (format);
     gst_caps_set_simple (allocation_caps,
         "width", G_TYPE_INT, GST_VIDEO_INFO_WIDTH (&decode->decoded_info),
         "height", G_TYPE_INT, GST_VIDEO_INFO_HEIGHT (&decode->decoded_info),
@@ -446,12 +458,12 @@ gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
   if (allocation_caps)
     gst_caps_unref (allocation_caps);
 
-  GST_INFO_OBJECT (decode, "new src caps = %" GST_PTR_FORMAT, state->caps);
   gst_caps_replace (&decode->srcpad_caps, state->caps);
+  GST_INFO_OBJECT (decode, "state src caps = %" GST_PTR_FORMAT, state->caps);
   gst_video_codec_state_unref (state);
 
-  fps_n = GST_VIDEO_INFO_FPS_N (vi);
-  fps_d = GST_VIDEO_INFO_FPS_D (vi);
+  fps_n = GST_VIDEO_INFO_FPS_N (&state->info);
+  fps_d = GST_VIDEO_INFO_FPS_D (&state->info);
   if (fps_n <= 0 || fps_d <= 0) {
     GST_DEBUG_OBJECT (decode, "forcing 25/1 framerate for latency calculation");
     fps_n = 25;
@@ -564,7 +576,7 @@ gst_vaapidecode_negotiate (GstVaapiDecode * decode)
   GST_DEBUG_OBJECT (decode, "input codec state changed: renegotiating");
 
   GST_VIDEO_DECODER_STREAM_LOCK (vdec);
-  if (!gst_vaapidecode_update_src_caps (decode))
+  if (!gst_vaapidecode_set_output_state (decode))
     goto caps_negotiation_failed;
   if (!gst_vaapi_plugin_base_set_caps (plugin, NULL, decode->srcpad_caps))
     goto caps_negotiation_failed;
@@ -1223,6 +1235,8 @@ gst_vaapidecode_set_format (GstVideoDecoder * vdec, GstVideoCodecState * state)
   if (!gst_vaapi_plugin_base_set_caps (plugin, decode->sinkpad_caps, NULL))
     return FALSE;
   if (!gst_vaapidecode_reset (decode, decode->sinkpad_caps, FALSE))
+    return FALSE;
+  if (!gst_vaapidecode_update_src_caps (decode))
     return FALSE;
 
   return TRUE;
