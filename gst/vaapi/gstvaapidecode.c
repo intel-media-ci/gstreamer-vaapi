@@ -316,7 +316,7 @@ gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
 {
   GstVideoDecoder *const vdec = GST_VIDEO_DECODER (decode);
   GstPad *const srcpad = GST_VIDEO_DECODER_SRC_PAD (vdec);
-  GstCaps *allowed;
+  GstCaps *filter_caps, *allowed_caps, *proposed_caps;
   GstVideoCodecState *state, *ref_state;
   GstVaapiCapsFeature feature;
   GstCapsFeatures *features;
@@ -333,14 +333,51 @@ gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
 
   ref_state = decode->input_state;
 
+  allowed_caps = gst_pad_get_allowed_caps (srcpad);
+  if (!allowed_caps)
+    return FALSE;
+  if (gst_caps_is_empty (allowed_caps)) {
+    gst_caps_unref (allowed_caps);
+    return FALSE;
+  }
+  GST_DEBUG_OBJECT (decode, "allowed peer caps: %" GST_PTR_FORMAT,
+      allowed_caps);
+
   format = GST_VIDEO_INFO_FORMAT (&decode->decoded_info);
-  allowed = gst_vaapidecode_get_allowed_srcpad_caps (decode);
-  feature = gst_vaapi_find_preferred_caps_feature (srcpad, allowed, &format);
-  gst_caps_unref (allowed);
+  width = decode->display_width;
+  height = decode->display_height;
+  if (!width || !height) {
+    width = GST_VIDEO_INFO_WIDTH (&ref_state->info);
+    height = GST_VIDEO_INFO_HEIGHT (&ref_state->info);
+  }
+
+  /* This filter caps are an assumption of the output stream based in
+   * the input state. It is used to choose an approximate caps from
+   * the allowed peer caps */
+  filter_caps = gst_caps_new_simple ("video/x-raw", "width", G_TYPE_INT,
+      width, "height", G_TYPE_INT, height, "framerate", GST_TYPE_FRACTION,
+      GST_VIDEO_INFO_FPS_N (&ref_state->info),
+      GST_VIDEO_INFO_FPS_D (&ref_state->info), "interlace-mode", G_TYPE_STRING,
+      gst_video_interlace_mode_to_string (GST_VIDEO_INFO_INTERLACE_MODE
+          (&ref_state->info)), NULL);
+  gst_caps_set_features (filter_caps, 0, gst_caps_features_new_any ());
+
+  proposed_caps = gst_caps_intersect_full (allowed_caps, filter_caps,
+      GST_CAPS_INTERSECT_FIRST);
+  GST_DEBUG_OBJECT (decode, "intersected caps: %" GST_PTR_FORMAT,
+      proposed_caps);
+  gst_caps_unref (allowed_caps);
+  gst_caps_unref (filter_caps);
+  if (gst_caps_is_empty (proposed_caps)) {
+    gst_caps_unref (proposed_caps);
+    return FALSE;
+  }
+
+  feature = gst_vaapi_find_preferred_caps_feature (proposed_caps, &format);
+  gst_caps_unref (proposed_caps);
 
   if (feature == GST_VAAPI_CAPS_FEATURE_NOT_NEGOTIATED)
     return FALSE;
-
 #if (!USE_GLX && !USE_EGL)
   /* This is a very pathological situation. Should not happen. */
   if (feature == GST_VAAPI_CAPS_FEATURE_GL_TEXTURE_UPLOAD_META)
@@ -353,14 +390,6 @@ gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
     GST_FIXME_OBJECT (decode, "validate if driver can convert from %s to %s",
         gst_video_format_to_string (GST_VIDEO_INFO_FORMAT
             (&decode->decoded_info)), gst_video_format_to_string (format));
-  }
-
-  width = decode->display_width;
-  height = decode->display_height;
-
-  if (!width || !height) {
-    width = GST_VIDEO_INFO_WIDTH (&ref_state->info);
-    height = GST_VIDEO_INFO_HEIGHT (&ref_state->info);
   }
 
   state = gst_video_decoder_set_output_state (vdec, format, width, height,
