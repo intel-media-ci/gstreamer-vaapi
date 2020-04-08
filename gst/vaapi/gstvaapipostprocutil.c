@@ -682,6 +682,7 @@ _get_preferred_caps (GstVaapiPostproc * postproc, GstVideoInfo * vinfo,
     GstCaps * srccaps)
 {
   GstPad *srcpad;
+  GstCaps *srcpad_caps, *allowed_caps;
   GstVideoFormat format;
   GstVaapiCapsFeature f;
   const gchar *feature;
@@ -692,13 +693,33 @@ _get_preferred_caps (GstVaapiPostproc * postproc, GstVideoInfo * vinfo,
 
   format = GST_VIDEO_FORMAT_UNKNOWN;
   srcpad = GST_BASE_TRANSFORM_SRC_PAD (postproc);
-  f = gst_vaapi_find_preferred_caps_feature (srcpad, srccaps, &format);
+
+  g_mutex_unlock (&postproc->postproc_lock);
+  allowed_caps = gst_pad_get_allowed_caps (srcpad);
+  g_mutex_lock (&postproc->postproc_lock);
+  if (!allowed_caps)
+    return FALSE;
+  if (gst_caps_is_empty (allowed_caps)) {
+    gst_caps_unref (allowed_caps);
+    return FALSE;
+  }
+  GST_DEBUG_OBJECT (postproc, "allowed caps: %" GST_PTR_FORMAT, allowed_caps);
+
+  srcpad_caps = gst_caps_intersect_full (allowed_caps, srccaps,
+      GST_CAPS_INTERSECT_FIRST);
+  GST_DEBUG_OBJECT (postproc, "intersected caps: %" GST_PTR_FORMAT,
+      srcpad_caps);
+  gst_caps_unref (allowed_caps);
+  if (gst_caps_is_empty (srcpad_caps)) {
+    gst_caps_unref (srcpad_caps);
+    return NULL;
+  }
+
+  f = gst_vaapi_find_preferred_caps_feature (srcpad_caps, &format);
   if (f == GST_VAAPI_CAPS_FEATURE_NOT_NEGOTIATED)
     return NULL;
 
   feature = gst_vaapi_caps_feature_to_string (f);
-  if (!feature)
-    feature = GST_CAPS_FEATURE_MEMORY_SYSTEM_MEMORY;
 
   n = gst_caps_get_size (srccaps);
   for (i = 0; i < n; i++) {
