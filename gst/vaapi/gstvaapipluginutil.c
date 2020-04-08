@@ -586,105 +586,51 @@ gst_vaapi_video_format_new_template_caps_with_features (GstVideoFormat format,
   return caps;
 }
 
-static GstVideoFormat
-gst_vaapi_find_preferred_format (const GValue * format_list,
-    GstVideoFormat native_format)
-{
-  const GValue *frmt;
-  GstVideoFormat out_format;
-  guint i;
-
-  /* if one format, that is the one */
-  if (G_VALUE_HOLDS_STRING (format_list))
-    return gst_video_format_from_string (g_value_get_string (format_list));
-
-  if (!GST_VALUE_HOLDS_LIST (format_list)) {
-    GST_ERROR ("negotiated caps do not have a valid format");
-    return GST_VIDEO_FORMAT_UNKNOWN;
-  }
-
-  if (native_format == GST_VIDEO_FORMAT_UNKNOWN
-      || native_format == GST_VIDEO_FORMAT_ENCODED) {
-    native_format = GST_VIDEO_FORMAT_NV12;      /* default VA format */
-  }
-
-  /* search our native format in the list */
-  for (i = 0; i < gst_value_list_get_size (format_list); i++) {
-    frmt = gst_value_list_get_value (format_list, i);
-    out_format = gst_video_format_from_string (g_value_get_string (frmt));
-
-    /* GStreamer do not handle encoded formats nicely. Try the next
-     * one. */
-    if (out_format == GST_VIDEO_FORMAT_ENCODED)
-      continue;
-
-    if (native_format == out_format)
-      return out_format;
-  }
-
-  /* just pick the first valid format in the list */
-  i = 0;
-  do {
-    frmt = gst_value_list_get_value (format_list, i++);
-    out_format = gst_video_format_from_string (g_value_get_string (frmt));
-  } while (out_format == GST_VIDEO_FORMAT_ENCODED);
-
-  return out_format;
-}
-
 GstVaapiCapsFeature
-gst_vaapi_find_preferred_caps_feature (GstPad * pad, GstCaps * allowed_caps,
+gst_vaapi_find_preferred_caps_feature (GstCaps * proposed_caps,
     GstVideoFormat * out_format_ptr)
 {
-  GstVaapiCapsFeature feature = GST_VAAPI_CAPS_FEATURE_NOT_NEGOTIATED;
+  GstVaapiCapsFeature feature;
   guint i, j, num_structures;
-  GstCaps *peer_caps, *out_caps = NULL, *caps = NULL;
+  GstCaps *preferred_caps = NULL;
   static const guint feature_list[] = { GST_VAAPI_CAPS_FEATURE_VAAPI_SURFACE,
     GST_VAAPI_CAPS_FEATURE_DMABUF,
     GST_VAAPI_CAPS_FEATURE_GL_TEXTURE_UPLOAD_META,
     GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY,
   };
 
-  /* query with no filter */
-  peer_caps = gst_pad_peer_query_caps (pad, NULL);
-  if (!peer_caps)
-    goto cleanup;
-  if (gst_caps_is_empty (peer_caps))
-    goto cleanup;
-
-  /* filter against our allowed caps */
-  out_caps = gst_caps_intersect_full (allowed_caps, peer_caps,
-      GST_CAPS_INTERSECT_FIRST);
+  g_return_val_if_fail (GST_IS_CAPS (proposed_caps),
+      GST_VAAPI_CAPS_FEATURE_NOT_NEGOTIATED);
 
   /* default feature */
   feature = GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY;
 
-  /* if downstream requests caps ANY, system memory is preferred */
-  if (gst_caps_is_any (peer_caps))
-    goto find_format;
-
-  num_structures = gst_caps_get_size (out_caps);
+  num_structures = gst_caps_get_size (proposed_caps);
   for (i = 0; i < num_structures; i++) {
-    GstCapsFeatures *const features = gst_caps_get_features (out_caps, i);
-    GstStructure *const structure = gst_caps_get_structure (out_caps, i);
+    GstCaps *caps;
+    GstCapsFeatures *const features = gst_caps_get_features (proposed_caps, i);
+    GstStructure *const structure = gst_caps_get_structure (proposed_caps, i);
 
-    /* Skip ANY features, we need an exact match for correct evaluation */
+    /* Skip ANY features, we need an exact match for correct
+     * evaluation */
     if (gst_caps_features_is_any (features))
       continue;
 
-    gst_caps_replace (&caps, NULL);
     caps = gst_caps_new_full (gst_structure_copy (structure), NULL);
     if (!caps)
       continue;
-    gst_caps_set_features (caps, 0, gst_caps_features_copy (features));
+    gst_caps_set_features_simple (caps, gst_caps_features_copy (features));
 
     for (j = 0; j < G_N_ELEMENTS (feature_list); j++) {
       if (gst_vaapi_caps_feature_contains (caps, feature_list[j])
           && feature < feature_list[j]) {
         feature = feature_list[j];
+        gst_caps_replace (&preferred_caps, caps);
         break;
       }
     }
+
+    gst_caps_unref (caps);
 
     /* Stop at the first match, the caps should already be sorted out
        by preference order from downstream elements */
@@ -692,50 +638,17 @@ gst_vaapi_find_preferred_caps_feature (GstPad * pad, GstCaps * allowed_caps,
       break;
   }
 
-  if (!caps)
-    goto cleanup;
+  if (!preferred_caps)
+    preferred_caps = gst_caps_copy (proposed_caps);
+  preferred_caps = gst_caps_fixate (preferred_caps);
 
-find_format:
   if (out_format_ptr) {
-    GstVideoFormat out_format;
-    GstStructure *structure = NULL;
-    const GValue *format_list;
-    GstCapsFeatures *features;
-
-    /* if the best feature is SystemMemory, we should choose the
-     * vidoe/x-raw caps in the filtered peer caps set. If not, use
-     * the first caps, which is the preferred by downstream. */
-    if (feature == GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY) {
-      gst_caps_replace (&caps, out_caps);
-      num_structures = gst_caps_get_size (caps);
-      for (i = 0; i < num_structures; i++) {
-        structure = gst_caps_get_structure (caps, i);
-        features = gst_caps_get_features (caps, i);
-        if (!gst_caps_features_is_any (features)
-            && gst_caps_features_contains (features,
-                gst_vaapi_caps_feature_to_string
-                (GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY)))
-          break;
-      }
-    } else {
-      structure = gst_caps_get_structure (caps, 0);
-    }
-    if (!structure)
-      goto cleanup;
-    format_list = gst_structure_get_value (structure, "format");
-    if (!format_list)
-      goto cleanup;
-    out_format = gst_vaapi_find_preferred_format (format_list, *out_format_ptr);
-    if (out_format == GST_VIDEO_FORMAT_UNKNOWN)
-      goto cleanup;
-
-    *out_format_ptr = out_format;
+    GstStructure *structure = gst_caps_get_structure (preferred_caps, 0);
+    const gchar *format_str = gst_structure_get_string (structure, "format");
+    *out_format_ptr = gst_video_format_from_string (format_str);
   }
 
-cleanup:
-  gst_caps_replace (&caps, NULL);
-  gst_caps_replace (&out_caps, NULL);
-  gst_caps_replace (&peer_caps, NULL);
+  gst_caps_unref (preferred_caps);
   return feature;
 }
 
