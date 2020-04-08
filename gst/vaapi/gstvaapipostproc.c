@@ -1486,6 +1486,8 @@ gst_vaapipostproc_fixate_caps (GstBaseTransform * trans,
 
   outcaps = gst_vaapipostproc_fixate_srccaps (postproc, caps, othercaps);
   g_mutex_unlock (&postproc->postproc_lock);
+  if (!outcaps)
+    goto done;
 
   /* set passthrough according to caps changes or filter changes */
   same_caps = gst_caps_is_equal (caps, outcaps);
