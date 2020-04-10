@@ -160,4 +160,9 @@ GArray *
 gst_vaapi_h26x_encoder_get_profiles_from_caps (GstCaps * caps,
     GstVaapiStrToProfileFunc func);
 
+G_GNUC_INTERNAL
+GstCaps *
+gst_vaapi_make_caps_by_formats (GArray * formats, gint min_width,
+    gint min_height, gint max_width, gint max_height, gboolean support_dma);
+
 #endif /* GST_VAAPI_PLUGIN_UTIL_H */

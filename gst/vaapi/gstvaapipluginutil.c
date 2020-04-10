@@ -1074,3 +1074,60 @@ gst_vaapi_h26x_encoder_get_profiles_from_caps (GstCaps * caps,
 
   return profiles;
 }
+
+/**
+ * gst_vaapi_make_caps_by_formats:
+ * @formats: an array of supported #GstVideoFormat
+ * @min_width: the min supported width
+ * @min_height: the min supported height
+ * @max_width: the max supported width
+ * @max_height: the max supported height
+ * @support_dma: whether the DMA feature is supported
+ *
+ * This function generates a #GstCaps based on the information such as
+ * formats, width and height.
+ *
+ * Return: A #GstCaps.
+ **/
+GstCaps *
+gst_vaapi_make_caps_by_formats (GArray * formats, gint min_width,
+    gint min_height, gint max_width, gint max_height, gboolean support_dma)
+{
+  GstCaps *out_caps = NULL;
+  GstCaps *raw_caps = NULL;
+  GstCaps *va_caps, *dma_caps;
+  guint i, size;
+  GstStructure *structure;
+
+  raw_caps = gst_vaapi_video_format_new_template_caps_from_list (formats);
+  if (!raw_caps)
+    return NULL;
+
+  /* Set the width/height info to caps */
+  size = gst_caps_get_size (raw_caps);
+  for (i = 0; i < size; i++) {
+    structure = gst_caps_get_structure (raw_caps, i);
+    if (!structure)
+      continue;
+    gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, min_width,
+        max_width, "height", GST_TYPE_INT_RANGE, min_height, max_height, NULL);
+  }
+
+  out_caps = gst_caps_copy (raw_caps);
+
+  va_caps = gst_caps_copy (raw_caps);
+  gst_caps_set_features_simple (va_caps,
+      gst_caps_features_from_string (GST_CAPS_FEATURE_MEMORY_VAAPI_SURFACE));
+  gst_caps_append (out_caps, va_caps);
+
+  if (support_dma) {
+    dma_caps = gst_caps_copy (raw_caps);
+    gst_caps_set_features_simple (dma_caps,
+        gst_caps_features_from_string (GST_CAPS_FEATURE_MEMORY_DMABUF));
+    gst_caps_append (out_caps, dma_caps);
+  }
+
+  gst_caps_unref (raw_caps);
+
+  return out_caps;
+}
