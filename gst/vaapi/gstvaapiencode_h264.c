@@ -79,27 +79,9 @@ GST_DEBUG_CATEGORY_STATIC (gst_vaapi_h264_encode_debug);
   "alignment = (string) au"
 
 /* *INDENT-OFF* */
-static const char gst_vaapiencode_h264_sink_caps_str[] =
-  GST_VAAPI_MAKE_SURFACE_CAPS ", "
-  GST_CAPS_INTERLACED_FALSE "; "
-  GST_VIDEO_CAPS_MAKE (GST_VAAPI_FORMATS_ALL) ", "
-  GST_CAPS_INTERLACED_FALSE ";"
-  GST_VIDEO_CAPS_MAKE_WITH_FEATURES(GST_CAPS_FEATURE_MEMORY_DMABUF, GST_VAAPI_FORMATS_ALL) ","
-  GST_CAPS_INTERLACED_FALSE;
-/* *INDENT-ON* */
-
-/* *INDENT-OFF* */
 static const char gst_vaapiencode_h264_src_caps_str[] =
   GST_CODEC_CAPS ", "
   "profile = (string) { constrained-baseline, baseline, main, high, multiview-high, stereo-high }";
-/* *INDENT-ON* */
-
-/* *INDENT-OFF* */
-static GstStaticPadTemplate gst_vaapiencode_h264_sink_factory =
-  GST_STATIC_PAD_TEMPLATE ("sink",
-      GST_PAD_SINK,
-      GST_PAD_ALWAYS,
-      GST_STATIC_CAPS (gst_vaapiencode_h264_sink_caps_str));
 /* *INDENT-ON* */
 
 /* *INDENT-OFF* */
@@ -111,7 +93,9 @@ static GstStaticPadTemplate gst_vaapiencode_h264_src_factory =
 /* *INDENT-ON* */
 
 /* h264 encode */
-G_DEFINE_TYPE (GstVaapiEncodeH264, gst_vaapiencode_h264, GST_TYPE_VAAPIENCODE);
+/* *INDENT-OFF* */
+GST_VAAPI_ENCODE_REGISTER_TYPE (h264, H264, H264, {});
+/* *INDENT-ON* */
 static GstElementClass *parent_class = NULL;
 
 static void
@@ -568,15 +552,14 @@ error_convert_buffer:
 }
 
 static void
-gst_vaapiencode_h264_class_init (GstVaapiEncodeH264Class * klass)
+gst_vaapiencode_h264_class_init (GstVaapiEncodeH264Class * klass, gpointer data)
 {
   GObjectClass *const object_class = G_OBJECT_CLASS (klass);
   GstElementClass *const element_class = GST_ELEMENT_CLASS (klass);
   GstVaapiEncodeClass *const encode_class = GST_VAAPIENCODE_CLASS (klass);
+  GstCaps *sink_caps = GST_CAPS_CAST (data);
   gpointer encoder_class;
 
-  GST_DEBUG_CATEGORY_INIT (gst_vaapi_h264_encode_debug,
-      GST_PLUGIN_NAME, 0, GST_PLUGIN_DESC);
   parent_class = g_type_class_peek_parent (klass);
 
   object_class->finalize = gst_vaapiencode_h264_finalize;
@@ -596,8 +579,10 @@ gst_vaapiencode_h264_class_init (GstVaapiEncodeH264Class * klass)
       GST_PLUGIN_DESC, "Wind Yuan <feng.yuan@intel.com>");
 
   /* sink pad */
-  gst_element_class_add_static_pad_template (element_class,
-      &gst_vaapiencode_h264_sink_factory);
+  g_assert (sink_caps);
+  gst_element_class_add_pad_template (element_class,
+      gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS, sink_caps));
+  gst_caps_unref (sink_caps);
 
   /* src pad */
   gst_element_class_add_static_pad_template (element_class,
