@@ -165,4 +165,9 @@ GstCaps *
 gst_vaapi_make_caps_by_formats (GArray * formats, gint min_width,
     gint min_height, gint max_width, gint max_height, gboolean support_dma);
 
+G_GNUC_INTERNAL
+GstCaps *
+gst_vaapi_detect_codec_caps (GstVaapiDisplay * display, gboolean is_encoder,
+    GstVaapiCodec codec, GArray * extra_fmts);
+
 #endif /* GST_VAAPI_PLUGIN_UTIL_H */
