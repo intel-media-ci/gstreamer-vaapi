@@ -82,6 +82,7 @@ static GstStaticPadTemplate gst_vaapiencode_jpeg_src_factory =
 
 /* jpeg encode */
 G_DEFINE_TYPE (GstVaapiEncodeJpeg, gst_vaapiencode_jpeg, GST_TYPE_VAAPIENCODE);
+static GstElementClass *parent_class = NULL;
 
 static void
 gst_vaapiencode_jpeg_init (GstVaapiEncodeJpeg * encode)
@@ -92,7 +93,7 @@ gst_vaapiencode_jpeg_init (GstVaapiEncodeJpeg * encode)
 static void
 gst_vaapiencode_jpeg_finalize (GObject * object)
 {
-  G_OBJECT_CLASS (gst_vaapiencode_jpeg_parent_class)->finalize (object);
+  G_OBJECT_CLASS (parent_class)->finalize (object);
 }
 
 static GstCaps *
@@ -122,6 +123,7 @@ gst_vaapiencode_jpeg_class_init (GstVaapiEncodeJpegClass * klass)
 
   GST_DEBUG_CATEGORY_INIT (gst_vaapi_jpeg_encode_debug,
       GST_PLUGIN_NAME, 0, GST_PLUGIN_DESC);
+  parent_class = g_type_class_peek_parent (klass);
 
   object_class->finalize = gst_vaapiencode_jpeg_finalize;
   object_class->set_property = gst_vaapiencode_set_property_subclass;

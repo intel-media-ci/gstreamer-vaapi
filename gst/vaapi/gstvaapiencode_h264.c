@@ -112,6 +112,7 @@ static GstStaticPadTemplate gst_vaapiencode_h264_src_factory =
 
 /* h264 encode */
 G_DEFINE_TYPE (GstVaapiEncodeH264, gst_vaapiencode_h264, GST_TYPE_VAAPIENCODE);
+static GstElementClass *parent_class = NULL;
 
 static void
 gst_vaapiencode_h264_init (GstVaapiEncodeH264 * encode)
@@ -125,7 +126,7 @@ gst_vaapiencode_h264_finalize (GObject * object)
   GstVaapiEncodeH264 *const encode = GST_VAAPIENCODE_H264_CAST (object);
 
   gst_caps_replace (&encode->available_caps, NULL);
-  G_OBJECT_CLASS (gst_vaapiencode_h264_parent_class)->finalize (object);
+  G_OBJECT_CLASS (parent_class)->finalize (object);
 }
 
 static GArray *
@@ -544,9 +545,8 @@ gst_vaapiencode_h264_alloc_buffer (GstVaapiEncode * base_encode,
 
   g_return_val_if_fail (encoder != NULL, GST_FLOW_ERROR);
 
-  ret =
-      GST_VAAPIENCODE_CLASS (gst_vaapiencode_h264_parent_class)->alloc_buffer
-      (base_encode, coded_buf, out_buffer_ptr);
+  ret = GST_VAAPIENCODE_CLASS (parent_class)->alloc_buffer (base_encode,
+      coded_buf, out_buffer_ptr);
   if (ret != GST_FLOW_OK)
     return ret;
 
@@ -577,6 +577,7 @@ gst_vaapiencode_h264_class_init (GstVaapiEncodeH264Class * klass)
 
   GST_DEBUG_CATEGORY_INIT (gst_vaapi_h264_encode_debug,
       GST_PLUGIN_NAME, 0, GST_PLUGIN_DESC);
+  parent_class = g_type_class_peek_parent (klass);
 
   object_class->finalize = gst_vaapiencode_h264_finalize;
   object_class->set_property = gst_vaapiencode_set_property_subclass;
