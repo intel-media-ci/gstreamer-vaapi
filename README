@@ -1,4 +1,4 @@
-
+ci test
   gstreamer-vaapi
   VA-API support to GStreamer
 
