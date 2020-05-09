@@ -1827,10 +1827,49 @@ bail:
   return TRUE;
 }
 
+static GstQuery *
+gst_vaapipostproc_adjust_crop_allocation (GstBaseTransform * trans,
+    GstQuery * query)
+{
+  GstVaapiPostproc *const postproc = GST_VAAPIPOSTPROC (trans);
+  GstCaps *caps = NULL;
+  GstCaps *new_caps;
+  GstStructure *structure;
+  GstQuery *new_query;
+  guint i;
+
+  gst_query_parse_allocation (query, &caps, NULL);
+  if (!caps)
+    return NULL;
+
+  new_caps = gst_caps_copy (caps);
+  gst_caps_unref (caps);
+  for (i = 0; i < gst_caps_get_size (new_caps); i++) {
+    structure = gst_caps_get_structure (new_caps, i);
+    if (!structure)
+      continue;
+    gst_structure_set (structure, "width", G_TYPE_INT,
+        GST_VIDEO_INFO_WIDTH (&postproc->crop_info),
+        "height", G_TYPE_INT,
+        GST_VIDEO_INFO_HEIGHT (&postproc->crop_info), NULL);
+  }
+
+  new_query = gst_query_new_allocation (new_caps, TRUE);
+  if (!gst_pad_peer_query (trans->srcpad, new_query)) {
+    GST_INFO_OBJECT (trans, "peer ALLOCATION query failed");
+    gst_query_unref (new_query);
+    new_query = NULL;
+  }
+
+  return new_query;
+}
+
 static gboolean
 gst_vaapipostproc_decide_allocation (GstBaseTransform * trans, GstQuery * query)
 {
   GstVaapiPostproc *const postproc = GST_VAAPIPOSTPROC (trans);
+  GstQuery *new_query = NULL;
+  gboolean ret = FALSE;
 
   g_mutex_lock (&postproc->postproc_lock);
   /* Let downstream handle the crop meta if they support it */
@@ -1840,8 +1879,27 @@ gst_vaapipostproc_decide_allocation (GstBaseTransform * trans, GstQuery * query)
   GST_DEBUG_OBJECT (postproc, "use_vpp_crop=%d", use_vpp_crop (postproc));
   g_mutex_unlock (&postproc->postproc_lock);
 
-  return gst_vaapi_plugin_base_decide_allocation (GST_VAAPI_PLUGIN_BASE (trans),
-      query);
+  /* Use the crop info to ajust the allocation size */
+  if (!use_vpp_crop (postproc)
+      && GST_VIDEO_INFO_FORMAT (&postproc->crop_info) !=
+      GST_VIDEO_FORMAT_UNKNOWN
+      && !gst_video_info_is_equal (&postproc->srcpad_info,
+          &postproc->crop_info)) {
+    new_query = gst_vaapipostproc_adjust_crop_allocation (trans, query);
+    if (!new_query) {
+      ret = FALSE;
+      goto out;
+    }
+  }
+
+  ret = gst_vaapi_plugin_base_decide_allocation (GST_VAAPI_PLUGIN_BASE (trans),
+      new_query ? new_query : query);
+
+out:
+  if (new_query)
+    gst_query_unref (new_query);
+
+  return ret;
 }
 
 static void
