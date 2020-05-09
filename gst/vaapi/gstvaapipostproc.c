@@ -324,7 +324,6 @@ gst_vaapipostproc_destroy_filter (GstVaapiPostproc * postproc)
     postproc->cb_channels = NULL;
   }
   gst_vaapi_filter_replace (&postproc->filter, NULL);
-  gst_vaapi_video_pool_replace (&postproc->filter_pool, NULL);
 }
 
 static void
@@ -365,7 +364,6 @@ gst_vaapipostproc_stop (GstBaseTransform * trans)
   postproc->field_duration = GST_CLOCK_TIME_NONE;
   gst_video_info_init (&postproc->sinkpad_info);
   gst_video_info_init (&postproc->srcpad_info);
-  gst_video_info_init (&postproc->filter_pool_info);
   g_mutex_unlock (&postproc->postproc_lock);
 
   return TRUE;
@@ -1556,33 +1554,6 @@ done:
   return ret;
 }
 
-static gboolean
-ensure_buffer_pool (GstVaapiPostproc * postproc, GstVideoInfo * vi)
-{
-  GstVaapiVideoPool *pool;
-
-  if (!vi)
-    return FALSE;
-
-  gst_video_info_change_format (vi, postproc->format,
-      GST_VIDEO_INFO_WIDTH (vi), GST_VIDEO_INFO_HEIGHT (vi));
-
-  if (postproc->filter_pool
-      && !video_info_changed (&postproc->filter_pool_info, vi))
-    return TRUE;
-  postproc->filter_pool_info = *vi;
-
-  pool =
-      gst_vaapi_surface_pool_new_full (GST_VAAPI_PLUGIN_BASE_DISPLAY (postproc),
-      &postproc->filter_pool_info, 0);
-  if (!pool)
-    return FALSE;
-
-  gst_vaapi_video_pool_replace (&postproc->filter_pool, pool);
-  gst_vaapi_video_pool_unref (pool);
-  return TRUE;
-}
-
 static GstFlowReturn
 gst_vaapipostproc_prepare_output_buffer (GstBaseTransform * trans,
     GstBuffer * inbuf, GstBuffer ** outbuf_ptr)
@@ -1664,17 +1635,6 @@ gst_vaapipostproc_before_transform (GstBaseTransform * trans, GstBuffer * inbuf)
 }
 
 static gboolean
-ensure_srcpad_buffer_pool (GstVaapiPostproc * postproc, GstCaps * caps)
-{
-  GstVideoInfo vi;
-
-  if (!gst_video_info_from_caps (&vi, caps))
-    return FALSE;
-
-  return ensure_buffer_pool (postproc, &vi);
-}
-
-static gboolean
 is_native_video_format (GstVideoFormat format)
 {
   guint i = 0;
@@ -1736,9 +1696,6 @@ gst_vaapipostproc_set_caps (GstBaseTransform * trans, GstCaps * caps,
           "Failed to configure HDR tone mapping."
           "  The driver may not support it.");
   }
-
-  if (!ensure_srcpad_buffer_pool (postproc, out_caps))
-    goto done;
 
   postproc->same_caps = gst_caps_is_equal (caps, out_caps);
 
@@ -2671,7 +2628,6 @@ gst_vaapipostproc_init (GstVaapiPostproc * postproc)
 
   gst_video_info_init (&postproc->sinkpad_info);
   gst_video_info_init (&postproc->srcpad_info);
-  gst_video_info_init (&postproc->filter_pool_info);
   gst_video_info_init (&postproc->crop_info);
 }
 
