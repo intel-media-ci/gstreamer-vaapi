@@ -152,6 +152,10 @@ gst_vaapi_video_memory_reset_surface (GstVaapiVideoMemory * mem);
 
 G_GNUC_INTERNAL
 gboolean
+gst_vaapi_video_memory_ensure_surface (GstVaapiVideoMemory * mem);
+
+G_GNUC_INTERNAL
+gboolean
 gst_vaapi_video_memory_sync (GstVaapiVideoMemory * mem);
 
 /* ------------------------------------------------------------------------ */
