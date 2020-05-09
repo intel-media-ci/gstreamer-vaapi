@@ -401,10 +401,10 @@ should_deinterlace_buffer (GstVaapiPostproc * postproc, GstBuffer * buf)
 }
 
 static GstBuffer *
-create_output_buffer (GstVaapiPostproc * postproc)
+create_output_buffer (GstVaapiPostproc * postproc, gboolean alloc_surface)
 {
   GstBuffer *outbuf;
-
+  GstVaapiVideoBufferPoolAcquireParams vaapi_params = { {0,}, };
   GstBufferPool *const pool =
       GST_VAAPI_PLUGIN_BASE_SRC_PAD_BUFFER_POOL (postproc);
   GstFlowReturn ret;
@@ -415,8 +415,12 @@ create_output_buffer (GstVaapiPostproc * postproc)
       !gst_buffer_pool_set_active (pool, TRUE))
     goto error_activate_pool;
 
-  outbuf = NULL;
-  ret = gst_buffer_pool_acquire_buffer (pool, &outbuf, NULL);
+  if (alloc_surface)
+    vaapi_params.parent_instance.flags |=
+        GST_VAAPI_VIDEO_BUFFER_POOL_ACQUIRE_FLAG_ALLOC_SURFACE;
+
+  ret = gst_buffer_pool_acquire_buffer (pool, &outbuf,
+      (GstBufferPoolAcquireParams *) & vaapi_params);
   if (ret != GST_FLOW_OK || !outbuf)
     goto error_create_buffer;
   return outbuf;
@@ -467,25 +471,23 @@ static gboolean
 append_output_buffer_metadata (GstVaapiPostproc * postproc, GstBuffer * outbuf,
     GstBuffer * inbuf, guint flags)
 {
-  GstVaapiVideoMeta *inbuf_meta, *outbuf_meta;
   GstVaapiSurfaceProxy *proxy;
 
   gst_buffer_copy_into (outbuf, inbuf, flags | GST_BUFFER_COPY_FLAGS, 0, -1);
 
   copy_metadata (postproc, outbuf, inbuf);
 
-  /* GstVaapiVideoMeta */
-  inbuf_meta = gst_buffer_get_vaapi_video_meta (inbuf);
-  g_return_val_if_fail (inbuf_meta != NULL, FALSE);
-  proxy = gst_vaapi_video_meta_get_surface_proxy (inbuf_meta);
+  proxy = gst_vaapi_video_buffer_get_video_mem_surface_proxy (inbuf);
+  if (!proxy)
+    return FALSE;
 
-  outbuf_meta = gst_buffer_get_vaapi_video_meta (outbuf);
-  g_return_val_if_fail (outbuf_meta != NULL, FALSE);
   proxy = gst_vaapi_surface_proxy_copy (proxy);
   if (!proxy)
     return FALSE;
 
-  gst_vaapi_video_meta_set_surface_proxy (outbuf_meta, proxy);
+  if (!gst_vaapi_video_buffer_set_video_mem_surface_proxy (outbuf, proxy))
+    return FALSE;
+
   gst_vaapi_surface_proxy_unref (proxy);
   return TRUE;
 }
@@ -854,7 +856,6 @@ gst_vaapipostproc_process_vpp (GstBaseTransform * trans, GstBuffer * inbuf,
   GstVaapiDeinterlaceState *const ds = &postproc->deinterlace_state;
   GstVaapiVideoMeta *inbuf_meta, *outbuf_meta;
   GstVaapiSurface *inbuf_surface, *outbuf_surface;
-  GstVaapiSurfaceProxy *proxy;
   GstVaapiFilterStatus status;
   GstClockTime timestamp;
   GstFlowReturn ret;
@@ -923,23 +924,12 @@ gst_vaapipostproc_process_vpp (GstBaseTransform * trans, GstBuffer * inbuf,
 
   /* First field */
   if (postproc->flags & GST_VAAPI_POSTPROC_FLAG_DEINTERLACE) {
-    fieldbuf = create_output_buffer (postproc);
+    fieldbuf = create_output_buffer (postproc, TRUE);
     if (!fieldbuf)
       goto error_create_buffer;
 
     outbuf_meta = gst_buffer_get_vaapi_video_meta (fieldbuf);
-    if (!outbuf_meta)
-      goto error_create_meta;
-
-    if (!gst_vaapi_video_meta_get_surface_proxy (outbuf_meta)) {
-      proxy =
-          gst_vaapi_surface_proxy_new_from_pool (GST_VAAPI_SURFACE_POOL
-          (postproc->filter_pool));
-      if (!proxy)
-        goto error_create_proxy;
-      gst_vaapi_video_meta_set_surface_proxy (outbuf_meta, proxy);
-      gst_vaapi_surface_proxy_unref (proxy);
-    }
+    g_assert (outbuf_meta);
 
     if (deint) {
       deint_flags = (tff ? GST_VAAPI_DEINTERLACE_FLAG_TOPFIELD : 0);
@@ -995,18 +985,7 @@ gst_vaapipostproc_process_vpp (GstBaseTransform * trans, GstBuffer * inbuf,
 
   /* Second field */
   outbuf_meta = gst_buffer_get_vaapi_video_meta (outbuf);
-  if (!outbuf_meta)
-    goto error_create_meta;
-
-  if (!gst_vaapi_video_meta_get_surface_proxy (outbuf_meta)) {
-    proxy =
-        gst_vaapi_surface_proxy_new_from_pool (GST_VAAPI_SURFACE_POOL
-        (postproc->filter_pool));
-    if (!proxy)
-      goto error_create_proxy;
-    gst_vaapi_video_meta_set_surface_proxy (outbuf_meta, proxy);
-    gst_vaapi_surface_proxy_unref (proxy);
-  }
+  g_assert (outbuf_meta);
 
   if (deint) {
     deint_flags = (tff ? 0 : GST_VAAPI_DEINTERLACE_FLAG_TOPFIELD);
@@ -1064,18 +1043,6 @@ error_create_buffer:
     GST_ERROR_OBJECT (postproc, "failed to create output buffer");
     return GST_FLOW_ERROR;
   }
-error_create_meta:
-  {
-    GST_ERROR_OBJECT (postproc, "failed to create new output buffer meta");
-    gst_buffer_replace (&fieldbuf, NULL);
-    return GST_FLOW_ERROR;
-  }
-error_create_proxy:
-  {
-    GST_ERROR_OBJECT (postproc, "failed to create surface proxy from pool");
-    gst_buffer_replace (&fieldbuf, NULL);
-    return GST_FLOW_ERROR;
-  }
 error_op_deinterlace:
   {
     GST_ERROR_OBJECT (postproc, "failed to apply deinterlacing filter");
@@ -1127,7 +1094,7 @@ gst_vaapipostproc_process (GstBaseTransform * trans, GstBuffer * inbuf,
       ~GST_VAAPI_PICTURE_STRUCTURE_MASK;
 
   /* First field */
-  fieldbuf = create_output_buffer (postproc);
+  fieldbuf = create_output_buffer (postproc, FALSE);
   if (!fieldbuf)
     goto error_create_buffer;
   append_output_buffer_metadata (postproc, fieldbuf, inbuf, 0);
@@ -1544,7 +1511,8 @@ gst_vaapipostproc_transform (GstBaseTransform * trans, GstBuffer * inbuf,
     return GST_FLOW_ERROR;
 
   if (GST_VAAPI_PLUGIN_BASE_COPY_OUTPUT_FRAME (trans)) {
-    GstBuffer *va_buf = create_output_buffer (postproc);
+    GstBuffer *va_buf = create_output_buffer (postproc, postproc->flags
+        && postproc->has_vpp);
     if (!va_buf) {
       ret = GST_FLOW_ERROR;
       goto done;
@@ -1662,7 +1630,8 @@ gst_vaapipostproc_prepare_output_buffer (GstBaseTransform * trans,
   if (GST_VAAPI_PLUGIN_BASE_COPY_OUTPUT_FRAME (trans)) {
     *outbuf_ptr = create_output_dump_buffer (postproc);
   } else {
-    *outbuf_ptr = create_output_buffer (postproc);
+    *outbuf_ptr = create_output_buffer (postproc, postproc->has_vpp
+        && postproc->has_vpp);
   }
 
   if (!*outbuf_ptr)
