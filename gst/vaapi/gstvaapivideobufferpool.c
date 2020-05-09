@@ -476,23 +476,70 @@ gst_vaapi_video_buffer_pool_acquire_buffer (GstBufferPool * pool,
   GstMemory *mem;
   GstVaapiVideoMeta *meta;
   GstVaapiSurface *surface;
+  gboolean alloc_surface = FALSE;
+
+  if (params &&
+      (params->flags & GST_VAAPI_VIDEO_BUFFER_POOL_ACQUIRE_FLAG_ALLOC_SURFACE))
+    alloc_surface = TRUE;
+
+  if (alloc_surface && priv_params && priv_params->proxy) {
+    GST_ERROR ("Should not specify allocate surface flag while still passing"
+        " surface proxy.");
+    *out_buffer_ptr = NULL;
+    return GST_FLOW_ERROR;
+  }
 
   ret =
       GST_BUFFER_POOL_CLASS
       (gst_vaapi_video_buffer_pool_parent_class)->acquire_buffer (pool, &buffer,
       params);
 
-  if (!priv->use_dmabuf_memory || !params || !priv_params->proxy
-      || ret != GST_FLOW_OK) {
-    *out_buffer_ptr = buffer;
+  if (ret != GST_FLOW_OK) {
+    *out_buffer_ptr = NULL;
     return ret;
   }
 
-  /* Some pool users, such as decode, needs to acquire a buffer for a
-   * specified surface (via surface proxy). If not it is a DMABuf, we
-   * just replace the underlying surface proxy of buffer's
-   * GstVaapiVideoMeta. But in DMABuf case, the thing is a little bit
-   * more complicated:
+  g_assert (gst_buffer_n_memory (buffer) == 1);
+
+  /* No special request, just return */
+  if (!alloc_surface && (!priv_params || !priv_params->proxy)) {
+    *out_buffer_ptr = buffer;
+    return GST_FLOW_OK;
+  }
+
+  /* The VASurface and DMA with allocation surface flag. */
+  if (alloc_surface) {
+    g_assert (!priv_params || !priv_params->proxy);
+    if (!priv->use_dmabuf_memory) {
+      mem = gst_buffer_peek_memory (buffer, 0);
+      if (!gst_vaapi_video_memory_ensure_surface ((GstVaapiVideoMemory *) mem)) {
+        GST_ERROR ("Failed to ensure the surface");
+        gst_buffer_unref (buffer);
+        *out_buffer_ptr = NULL;
+        return GST_FLOW_ERROR;
+      }
+    } else {
+      /* The DMA mem should have allocated surface. */
+    }
+
+    *out_buffer_ptr = buffer;
+    return GST_FLOW_OK;
+  }
+
+  /* The VASurface case with specified surface proxy.
+   * Some pool users, such as decode, needs to acquire a buffer for a
+   * specified surface (via surface proxy). we just replace the underlying
+   * surface proxy.*/
+  if (!priv->use_dmabuf_memory) {
+    g_assert (priv_params && priv_params->proxy);
+    meta = gst_buffer_get_vaapi_video_meta (buffer);
+    g_assert (meta);
+    gst_vaapi_video_meta_set_surface_proxy (meta, priv_params->proxy);
+    *out_buffer_ptr = buffer;
+    return GST_FLOW_OK;
+  }
+
+  /* DMABuf case with specified surface proxy, a little complicated:
    *
    * For DMABuf, GstMemory is-a GstFdMemory, which doesn't provide a
    * way to change its FD, thus once created it's bound to a
@@ -502,7 +549,6 @@ gst_vaapi_video_buffer_pool_acquire_buffer (GstBufferPool * pool,
    * buffer and its memory. But the pushed surface by the decoder may
    * be different from the one popped by the pool, so we need to
    * replace the buffer's memory with the correct one. */
-  g_assert (gst_buffer_n_memory (buffer) == 1);
 
   /* Update the underlying surface proxy */
   meta = gst_buffer_get_vaapi_video_meta (buffer);
