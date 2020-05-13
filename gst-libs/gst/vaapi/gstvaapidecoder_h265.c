@@ -1346,7 +1346,16 @@ decode_current_picture (GstVaapiDecoderH265 * decoder)
 
   priv->decoder_state |= sps_pi->state;
   if (!(priv->decoder_state & GST_H265_VIDEO_STATE_GOT_I_FRAME)) {
-    if (priv->decoder_state & GST_H265_VIDEO_STATE_GOT_P_SLICE)
+    const GstH265PPS *pps = get_pps (decoder);
+    /* Spec: the picture is an IRAP picture, nuh_layer_id is equal to 0,
+       and pps_curr_pic_ref_enabled_flag is equal to 0, slice_type shall
+       be equal to 2(I Frame).
+       In practice, in SCC extension, when pps_curr_pic_ref_enabled_flag
+       is set, which means the pic can ref to itself, the IRAP picture
+       is set to P frame in slice, in order to generate the L0 ref list.
+       So a CVS may start with P slice in SCC, in fact it is a I frame. */
+    if (priv->decoder_state & GST_H265_VIDEO_STATE_GOT_P_SLICE &&
+        !pps->pps_scc_extension_params.pps_curr_pic_ref_enabled_flag)
       goto drop_frame;
     sps_pi->state |= GST_H265_VIDEO_STATE_GOT_I_FRAME;
   }
@@ -1671,6 +1680,7 @@ init_picture_refs (GstVaapiDecoderH265 * decoder,
   guint num_ref_idx_l0_active_minus1 = 0;
   guint num_ref_idx_l1_active_minus1 = 0;
   GstH265RefPicListModification *ref_pic_list_modification;
+  GstH265PPS *const pps = get_pps (decoder);
   guint type;
 
   memset (priv->RefPicList0, 0, sizeof (GstVaapiPictureH265 *) * 16);
@@ -1703,6 +1713,10 @@ init_picture_refs (GstVaapiDecoderH265 * decoder,
     for (i = 0; i < priv->NumPocLtCurr && rIdx < NumRpsCurrTempList0;
         rIdx++, i++)
       RefPicListTemp0[rIdx] = priv->RefPicSetLtCurr[i];
+
+    /* Add the the current picture itself if scc requires */
+    if (pps->pps_scc_extension_params.pps_curr_pic_ref_enabled_flag)
+      RefPicListTemp0[rIdx++] = picture;
   }
 
   /* construct RefPicList0 (8-9) */
@@ -1711,6 +1725,10 @@ init_picture_refs (GstVaapiDecoderH265 * decoder,
         ref_pic_list_modification->ref_pic_list_modification_flag_l0 ?
         RefPicListTemp0[ref_pic_list_modification->list_entry_l0[rIdx]] :
         RefPicListTemp0[rIdx];
+  if (pps->pps_scc_extension_params.pps_curr_pic_ref_enabled_flag
+      && !ref_pic_list_modification->ref_pic_list_modification_flag_l0
+      && (NumRpsCurrTempList0 > num_ref_idx_l0_active_minus1 + 1))
+    priv->RefPicList0[rIdx++] = picture;
   priv->RefPicList0_count = rIdx;
 
   if (type == GST_H265_B_SLICE) {
@@ -1899,6 +1917,17 @@ fill_picture (GstVaapiDecoderH265 * decoder, GstVaapiPictureH265 * picture)
     if (n >= G_N_ELEMENTS (pic_param->ReferenceFrames))
       break;
   }
+  /* add the pic itself if scc requires */
+  if (pps->pps_scc_extension_params.pps_curr_pic_ref_enabled_flag
+      && n < G_N_ELEMENTS (pic_param->ReferenceFrames) - 1) {
+    /* need to mark self as lt ref */
+    gst_vaapi_picture_h265_set_reference (picture,
+        GST_VAAPI_PICTURE_FLAG_LONG_TERM_REFERENCE);
+    vaapi_fill_picture (&pic_param->ReferenceFrames[n++], picture,
+        picture->structure);
+    gst_vaapi_picture_h265_set_reference (picture, 0);
+  }
+
   for (; n < G_N_ELEMENTS (pic_param->ReferenceFrames); n++)
     vaapi_init_picture (&pic_param->ReferenceFrames[n]);
 
@@ -2278,6 +2307,7 @@ decode_ref_pic_set (GstVaapiDecoderH265 * decoder,
   GstVaapiDecoderH265Private *const priv = &decoder->priv;
   GstH265SliceHdr *const slice_hdr = &pi->data.slice_hdr;
   GstH265SPS *const sps = get_sps (decoder);
+  GstH265PPS *const pps = get_pps (decoder);
   const gint32 MaxPicOrderCntLsb =
       1 << (sps->log2_max_pic_order_cnt_lsb_minus4 + 4);
 
@@ -2298,6 +2328,7 @@ decode_ref_pic_set (GstVaapiDecoderH265 * decoder,
     memset (priv->PocLtFoll, 0, sizeof (guint) * 16);
     priv->NumPocStCurrBefore = priv->NumPocStCurrAfter = priv->NumPocStFoll = 0;
     priv->NumPocLtCurr = priv->NumPocLtFoll = 0;
+    priv->NumPocTotalCurr = 0;
   } else {
     GstH265ShortTermRefPicSet *stRefPic = NULL;
     gint32 num_lt_pics, pocLt;
@@ -2347,6 +2378,8 @@ decode_ref_pic_set (GstVaapiDecoderH265 * decoder,
         numtotalcurr++;
     }
 
+    if (pps->pps_scc_extension_params.pps_curr_pic_ref_enabled_flag)
+      numtotalcurr++;
     priv->NumPocTotalCurr = numtotalcurr;
 
     /* The variable DeltaPocMsbCycleLt[i] is derived as follows: (7-38) */
