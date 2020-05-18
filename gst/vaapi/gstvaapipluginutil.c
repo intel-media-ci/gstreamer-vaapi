@@ -597,13 +597,11 @@ GstVaapiCapsFeature
 gst_vaapi_find_preferred_caps_feature (GstCaps * proposed_caps,
     GstVideoFormat * out_format_ptr)
 {
-  GstVaapiCapsFeature feature;
-  guint i, j, num_structures;
   GstCaps *preferred_caps = NULL;
-  static const guint feature_list[] = { GST_VAAPI_CAPS_FEATURE_VAAPI_SURFACE,
-    GST_VAAPI_CAPS_FEATURE_DMABUF,
+  GstVaapiCapsFeature feature;
+  guint i, num_structures;
+  static const guint feature_list[] = { GST_VAAPI_CAPS_FEATURE_DMABUF,
     GST_VAAPI_CAPS_FEATURE_GL_TEXTURE_UPLOAD_META,
-    GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY,
   };
 
   g_return_val_if_fail (GST_IS_CAPS (proposed_caps),
@@ -612,42 +610,34 @@ gst_vaapi_find_preferred_caps_feature (GstCaps * proposed_caps,
   /* default feature */
   feature = GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY;
 
+  /* search first for VASurface feature */
   num_structures = gst_caps_get_size (proposed_caps);
   for (i = 0; i < num_structures; i++) {
-    GstCaps *caps;
     GstCapsFeatures *const features = gst_caps_get_features (proposed_caps, i);
     GstStructure *const structure = gst_caps_get_structure (proposed_caps, i);
 
-    /* Skip ANY features, we need an exact match for correct
-     * evaluation */
-    if (gst_caps_features_is_any (features))
-      continue;
-
-    caps = gst_caps_new_full (gst_structure_copy (structure), NULL);
-    if (!caps)
-      continue;
-    gst_caps_set_features_simple (caps, gst_caps_features_copy (features));
-
-    for (j = 0; j < G_N_ELEMENTS (feature_list); j++) {
-      if (gst_vaapi_caps_feature_contains (caps, feature_list[j])
-          && feature < feature_list[j]) {
-        feature = feature_list[j];
-        gst_caps_replace (&preferred_caps, caps);
-        break;
-      }
-    }
-
-    gst_caps_unref (caps);
-
-    /* Stop at the first match, the caps should already be sorted out
-       by preference order from downstream elements */
-    if (feature != GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY)
+    if (gst_caps_features_contains (features,
+            GST_CAPS_FEATURE_MEMORY_VAAPI_SURFACE)) {
+      preferred_caps = gst_caps_new_full (gst_structure_copy (structure), NULL);
+      gst_caps_set_features_simple (preferred_caps,
+          gst_caps_features_copy (features));
+      feature = GST_VAAPI_CAPS_FEATURE_VAAPI_SURFACE;
       break;
+    }
   }
 
   if (!preferred_caps)
     preferred_caps = gst_caps_copy (proposed_caps);
   preferred_caps = gst_caps_fixate (preferred_caps);
+
+  if (feature != GST_VAAPI_CAPS_FEATURE_VAAPI_SURFACE) {
+    for (i = 0; i < G_N_ELEMENTS (feature_list); i++) {
+      if (gst_vaapi_caps_feature_contains (preferred_caps, feature_list[i])) {
+        feature = feature_list[i];
+        break;
+      }
+    }
+  }
 
   if (out_format_ptr) {
     GstStructure *structure = gst_caps_get_structure (preferred_caps, 0);
