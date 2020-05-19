@@ -161,6 +161,7 @@ struct _GstVaapiPostproc
   GPtrArray *filter_ops;
   GstVaapiVideoPool *filter_pool;
   GstVideoInfo filter_pool_info;
+  GstVideoInfo crop_info;
   GArray *filter_formats;
   GstVideoFormat format;        /* output video format (encoded) */
   guint width;

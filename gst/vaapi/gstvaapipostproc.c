@@ -1588,26 +1588,49 @@ gst_vaapipostproc_prepare_output_buffer (GstBaseTransform * trans,
     GstBuffer * inbuf, GstBuffer ** outbuf_ptr)
 {
   GstVaapiPostproc *const postproc = GST_VAAPIPOSTPROC (trans);
-  const GstVideoMeta *video_meta;
-  GstVideoInfo info;
 
   if (gst_base_transform_is_passthrough (trans)) {
     *outbuf_ptr = inbuf;
     return GST_FLOW_OK;
   }
 
+  if (GST_VAAPI_PLUGIN_BASE_COPY_OUTPUT_FRAME (trans)) {
+    *outbuf_ptr = create_output_dump_buffer (postproc);
+  } else {
+    *outbuf_ptr = create_output_buffer (postproc, postproc->has_vpp
+        && postproc->has_vpp);
+  }
+
+  if (!*outbuf_ptr)
+    return GST_FLOW_ERROR;
+
+  return GST_FLOW_OK;
+}
+
+static void
+gst_vaapipostproc_before_transform (GstBaseTransform * trans, GstBuffer * inbuf)
+{
+  GstVaapiPostproc *const postproc = GST_VAAPIPOSTPROC (trans);
+  const GstVideoMeta *video_meta;
+  GstVideoInfo info;
+  gboolean update_crop_info = FALSE;
+
   /* If we are not using vpp crop (i.e. forwarding crop meta to downstream)
    * then, ensure our output buffer pool is sized and rotated for uncropped
    * output */
+  info = postproc->srcpad_info;
+
   if (gst_buffer_get_video_crop_meta (inbuf) && !use_vpp_crop (postproc)) {
     /* The video meta is required since the caps width/height are smaller,
      * which would not result in a usable GstVideoInfo for mapping the
      * buffer. */
     video_meta = gst_buffer_get_video_meta (inbuf);
-    if (!video_meta)
-      return GST_FLOW_ERROR;
+    if (!video_meta) {
+      GST_ERROR ("The buffer has crop meta but has no video meta. VPP can not"
+          "  decide the resolution when do the crop");
+      return;
+    }
 
-    info = postproc->srcpad_info;
     info.width = video_meta->width;
     info.height = video_meta->height;
 
@@ -1623,21 +1646,21 @@ gst_vaapipostproc_prepare_output_buffer (GstBaseTransform * trans,
           break;
       }
     }
-
-    ensure_buffer_pool (postproc, &info);
   }
 
-  if (GST_VAAPI_PLUGIN_BASE_COPY_OUTPUT_FRAME (trans)) {
-    *outbuf_ptr = create_output_dump_buffer (postproc);
-  } else {
-    *outbuf_ptr = create_output_buffer (postproc, postproc->has_vpp
-        && postproc->has_vpp);
+  g_mutex_lock (&postproc->postproc_lock);
+  if (!gst_video_info_is_equal (&info, &postproc->crop_info)) {
+    update_crop_info = TRUE;
+    postproc->crop_info = info;
   }
+  g_mutex_unlock (&postproc->postproc_lock);
 
-  if (!*outbuf_ptr)
-    return GST_FLOW_ERROR;
-
-  return GST_FLOW_OK;
+  if (update_crop_info
+      && !gst_video_info_is_equal (&postproc->srcpad_info,
+          &postproc->crop_info)) {
+    GST_DEBUG ("reconfigure the src because of crop info");
+    gst_base_transform_reconfigure_src (GST_BASE_TRANSFORM (postproc));
+  }
 }
 
 static gboolean
@@ -2221,6 +2244,7 @@ gst_vaapipostproc_class_init (GstVaapiPostprocClass * klass)
   trans_class->sink_event = gst_vaapipostproc_sink_event;
 
   trans_class->prepare_output_buffer = gst_vaapipostproc_prepare_output_buffer;
+  trans_class->before_transform = gst_vaapipostproc_before_transform;
 
   element_class->set_context = gst_vaapi_base_set_context;
   gst_element_class_set_static_metadata (element_class,
@@ -2590,6 +2614,7 @@ gst_vaapipostproc_init (GstVaapiPostproc * postproc)
   gst_video_info_init (&postproc->sinkpad_info);
   gst_video_info_init (&postproc->srcpad_info);
   gst_video_info_init (&postproc->filter_pool_info);
+  gst_video_info_init (&postproc->crop_info);
 }
 
 /* ------------------------------------------------------------------------ */
