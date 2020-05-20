@@ -1331,6 +1331,7 @@ gst_vaapi_decoder_h264_create (GstVaapiDecoder * base_decoder)
   priv->prev_pic_structure = GST_VAAPI_PICTURE_STRUCTURE_FRAME;
   priv->progressive_sequence = TRUE;
   priv->top_field_first = FALSE;
+  priv->baseline_as_constrained = TRUE;
   return TRUE;
 }
 
@@ -4799,24 +4800,6 @@ gst_vaapi_decoder_h264_set_base_only (GstVaapiDecoderH264 * decoder,
   g_return_if_fail (decoder != NULL);
 
   decoder->priv.base_only = base_only;
-}
-
-/**
- * gst_vaapi_decoder_h264_set_baseline_as_constrained:
- * @decoder: a #GstVaapiDecoderH264
- * @baseline_as_constrained: %TRUE to assume all baseline is constrained
- *
- * This is a small hack that makes the decoder assumes that baseline contents
- * is already constrained. This may allow decoding some streams that would
- * otherwise fails to negotiation.
- */
-void
-gst_vaapi_decoder_h264_set_baseline_as_constrained (GstVaapiDecoderH264 *
-    decoder, gboolean baseline_as_constrained)
-{
-  g_return_if_fail (decoder != NULL);
-
-  decoder->priv.baseline_as_constrained = baseline_as_constrained;
 }
 
 /**
