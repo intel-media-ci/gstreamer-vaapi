@@ -144,6 +144,10 @@ gst_vaapi_decoder_get_surface_attributes (GstVaapiDecoder * decoder,
     gint * min_width, gint * min_height, gint * max_width, gint * max_height,
     guint * mem_types);
 
+void
+gst_vaapi_decoder_set_preferred_format (GstVaapiDecoder * decoder,
+    GstVideoFormat format);
+
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(GstVaapiDecoder, gst_object_unref)
 
 G_END_DECLS
