@@ -389,6 +389,12 @@ gst_vaapidecode_update_src_caps (GstVaapiDecode * decode)
   GST_INFO_OBJECT (decode, "src pad caps %" GST_PTR_FORMAT, srcpad_caps);
   decode->srcpad_caps = srcpad_caps;
 
+  if (feature == GST_VAAPI_CAPS_FEATURE_DMABUF
+      || feature == GST_VAAPI_CAPS_FEATURE_SYSTEM_MEMORY
+      || feature == GST_VAAPI_CAPS_FEATURE_VAAPI_SURFACE) {
+    gst_vaapi_decoder_set_preferred_format (decode->decoder, format);
+  }
+
   return TRUE;
 }
 
