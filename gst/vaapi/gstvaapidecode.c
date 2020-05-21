@@ -1226,8 +1226,7 @@ gst_vaapidecode_set_format (GstVideoDecoder * vdec, GstVideoCodecState * state)
   GstVaapiPluginBase *const plugin = GST_VAAPI_PLUGIN_BASE (vdec);
   GstVaapiDecode *const decode = GST_VAAPIDECODE (vdec);
 
-  if (!gst_vaapi_decode_input_state_replace (decode, state))
-    return TRUE;
+  gst_vaapi_decode_input_state_replace (decode, state);
   if (gst_vaapidecode_drain (vdec) == GST_FLOW_ERROR)
     return FALSE;
   if (!gst_vaapidecode_update_sink_caps (decode, state->caps))
