@@ -984,6 +984,8 @@ gst_vaapi_decoder_ensure_context (GstVaapiDecoder * decoder,
   gst_vaapi_decoder_set_picture_size (decoder, cip->width, cip->height);
 
   cip->usage = GST_VAAPI_CONTEXT_USAGE_DECODE;
+  cip->preferred_format = decoder->preferred_format;
+
   if (decoder->context) {
     if (!gst_vaapi_context_reset (decoder->context, cip))
       return FALSE;

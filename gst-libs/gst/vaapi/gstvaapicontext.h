@@ -84,6 +84,7 @@ struct _GstVaapiContextInfo
   GstVaapiProfile profile;
   GstVaapiEntrypoint entrypoint;
   GstVaapiChromaType chroma_type;
+  GstVideoFormat preferred_format;
   guint width;
   guint height;
   guint ref_frames;
@@ -113,7 +114,6 @@ struct _GstVaapiContext
   GstVaapiVideoPool *surfaces_pool;
   gboolean reset_on_resize;
   GstVaapiConfigSurfaceAttributes *attribs;
-  GstVideoFormat preferred_format;
 };
 
 #define GST_VAAPI_CONTEXT_ID(context)        (((GstVaapiContext *)(context))->object_id)

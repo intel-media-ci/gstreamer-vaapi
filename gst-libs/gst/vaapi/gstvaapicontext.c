@@ -39,6 +39,7 @@
 
 /* Define default VA surface chroma format to YUV 4:2:0 */
 #define DEFAULT_CHROMA_TYPE (GST_VAAPI_CHROMA_TYPE_YUV420)
+#define DEFAULT_VIDEO_FORMAT (GST_VIDEO_FORMAT_NV12)
 
 /* Number of scratch surfaces beyond those used as reference */
 #define SCRATCH_SURFACES_COUNT (4)
@@ -73,31 +74,46 @@ ensure_attributes (GstVaapiContext * context)
   return (context->attribs != NULL);
 }
 
-/* looks for the (very arbritrary) preferred format from the requested
- * context chroma type, in the context attributes */
-static GstVideoFormat
-get_preferred_format (GstVaapiContext * context)
+/* XXX(victor): verify the preferred video format concords with the
+ * chroma type; otherwise it is changed for the (very arbritrary)
+ * preferred format from the requested context chroma type, in the
+ * context attributes */
+static void
+ensure_preferred_format (GstVaapiContext * context)
 {
-  const GstVaapiContextInfo *const cip = &context->info;
+  GstVaapiContextInfo *cip = &context->info;
   GArray *formats;
   guint i;
 
-  if (context->preferred_format != GST_VIDEO_FORMAT_UNKNOWN)
-    return context->preferred_format;
+  /* GST_VIDEO_FORMAT_UNKNOWN is used in context to later select the
+   * deprecated surface creation, to say using only chroma type. */
+  if (cip->profile == GST_VAAPI_PROFILE_JPEG_BASELINE
+      && cip->usage == GST_VAAPI_CONTEXT_USAGE_DECODE
+      && gst_vaapi_display_has_driver_quirks (context->display,
+          GST_VAAPI_DRIVER_QUIRK_MISSING_DECODER_FORMATS)) {
+    cip->preferred_format = GST_VIDEO_FORMAT_UNKNOWN;
+    return;
+  }
 
+  if (cip->preferred_format != GST_VIDEO_FORMAT_UNKNOWN
+      && cip->chroma_type ==
+      gst_vaapi_video_format_get_chroma_type (cip->preferred_format))
+    return;
+
+  /* if no context attributes let's go with NV12. Hope for the
+   * best. */
   if (!ensure_attributes (context) || !context->attribs->formats)
-    return GST_VIDEO_FORMAT_UNKNOWN;
+    cip->preferred_format = DEFAULT_VIDEO_FORMAT;
 
+  /* let's find the preferred format for the chroma type */
   formats = context->attribs->formats;
   for (i = 0; i < formats->len; i++) {
     GstVideoFormat format = g_array_index (formats, GstVideoFormat, i);
     if (format == gst_vaapi_video_format_from_chroma (cip->chroma_type)) {
-      context->preferred_format = format;
+      cip->preferred_format = format;
       break;
     }
   }
-
-  return context->preferred_format;
 }
 
 static inline gboolean
@@ -115,8 +131,6 @@ context_destroy_surfaces (GstVaapiContext * context)
     g_ptr_array_unref (context->surfaces);
     context->surfaces = NULL;
   }
-
-  context->preferred_format = GST_VIDEO_FORMAT_UNKNOWN;
 
   gst_vaapi_video_pool_replace (&context->surfaces_pool, NULL);
 }
@@ -164,15 +178,13 @@ context_ensure_surfaces (GstVaapiContext * context)
   const GstVaapiContextInfo *const cip = &context->info;
   const guint num_surfaces = cip->ref_frames + SCRATCH_SURFACES_COUNT;
   GstVaapiSurface *surface;
-  GstVideoFormat format;
   guint i;
 
-  format = get_preferred_format (context);
   for (i = context->surfaces->len; i < num_surfaces; i++) {
-    if (format != GST_VIDEO_FORMAT_UNKNOWN) {
-      surface = gst_vaapi_surface_new_with_format (display, format, cip->width,
-          cip->height, 0);
-    } else {
+    if (cip->preferred_format != GST_VIDEO_FORMAT_UNKNOWN) {
+      surface = gst_vaapi_surface_new_with_format (display,
+          cip->preferred_format, cip->width, cip->height, 0);
+    } else {                    /* compatibility with JPEG in i965 */
       surface = gst_vaapi_surface_new (display, cip->chroma_type, cip->width,
           cip->height);
     }
@@ -202,9 +214,15 @@ context_create_surfaces (GstVaapiContext * context)
   }
 
   if (!context->surfaces_pool) {
-    context->surfaces_pool =
-        gst_vaapi_surface_pool_new_with_chroma_type (display, cip->chroma_type,
-        cip->width, cip->height, 0);
+    if (cip->preferred_format != GST_VIDEO_FORMAT_UNKNOWN) {
+      context->surfaces_pool =
+          gst_vaapi_surface_pool_new (display, cip->preferred_format,
+          cip->width, cip->height, 0);
+    } else {                    /* compatibility with JPEG in i965 */
+      context->surfaces_pool =
+          gst_vaapi_surface_pool_new_with_chroma_type (display,
+          cip->chroma_type, cip->width, cip->height, 0);
+    }
 
     if (!context->surfaces_pool)
       return FALSE;
@@ -431,7 +449,6 @@ gst_vaapi_context_init (GstVaapiContext * context,
   context->reset_on_resize = TRUE;
 
   context->attribs = NULL;
-  context->preferred_format = GST_VIDEO_FORMAT_UNKNOWN;
 }
 
 /**
@@ -477,6 +494,9 @@ gst_vaapi_context_new (GstVaapiDisplay * display,
   /* this means we don't want to create a VAcontext */
   if (cip->width == 0 && cip->height == 0)
     goto done;
+
+  /* only with VA context it's possible to check the format */
+  ensure_preferred_format (context);
 
   /* this is not valid */
   if (cip->width == 0 || cip->height == 0)
@@ -528,6 +548,9 @@ gst_vaapi_context_reset (GstVaapiContext * context,
     cip->chroma_type = chroma_type;
     reset_surfaces = TRUE;
   }
+
+  cip->preferred_format = new_cip->preferred_format;
+  ensure_preferred_format (context);
 
   if (cip->width != new_cip->width || cip->height != new_cip->height) {
     cip->width = new_cip->width;
