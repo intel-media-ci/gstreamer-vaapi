@@ -200,6 +200,7 @@ struct _GstVaapiDecoder
   GstVaapiParserState parser_state;
   GstVaapiDecoderStateChangedFunc codec_state_changed_func;
   gpointer codec_state_changed_data;
+  GstVideoFormat preferred_format;
 };
 
 /**

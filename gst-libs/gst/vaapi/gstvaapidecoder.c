@@ -1279,3 +1279,18 @@ gst_vaapi_decoder_get_surface_attributes (GstVaapiDecoder * decoder,
     *mem_types = attribs.mem_types;
   return attribs.formats;
 }
+
+/**
+ * gst_vaapi_decoder_set_preferred_format:
+ * @decoder: a #GstVaapiDecoder instance
+ * @format: the src caps negotiated format
+ *
+ * Set the src caps negotiated @format which will be used as a hint for
+ * the decoder's context at VA surface creation.
+ **/
+void
+gst_vaapi_decoder_set_preferred_format (GstVaapiDecoder * decoder,
+    GstVideoFormat format)
+{
+  decoder->preferred_format = format;
+}
