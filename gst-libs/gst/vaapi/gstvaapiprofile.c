@@ -378,9 +378,26 @@ gst_vaapi_profile_from_codec_data (GstVaapiCodec codec, GstBuffer * buffer)
   return profile;
 }
 
+static gboolean
+is_in_profiles (GArray * profiles, GstVaapiProfile profile)
+{
+  gint i;
+
+  if (!profiles)
+    return TRUE;
+
+  for (i = 0; i < profiles->len; i++) {
+    if (profile == g_array_index (profiles, GstVaapiProfile, i))
+      return TRUE;
+  }
+  return FALSE;
+}
+
 /**
  * gst_vaapi_profile_from_caps:
  * @caps: a #GstCaps
+ * @available_profiles: (allow-null): a #GArray with the available
+ *   profiles
  *
  * Converts @caps into the corresponding #GstVaapiProfile. If the
  * profile cannot be represented by #GstVaapiProfile, then zero is
@@ -389,7 +406,7 @@ gst_vaapi_profile_from_codec_data (GstVaapiCodec codec, GstBuffer * buffer)
  * Return value: the #GstVaapiProfile describing the @caps
  */
 GstVaapiProfile
-gst_vaapi_profile_from_caps (const GstCaps * caps)
+gst_vaapi_profile_from_caps (const GstCaps * caps, GArray * available_profiles)
 {
   const GstVaapiProfileMap *m;
   GstCaps *caps_test;
@@ -422,6 +439,8 @@ gst_vaapi_profile_from_caps (const GstCaps * caps)
   best_profile = 0;
   for (m = gst_vaapi_profiles; !profile && m->profile; m++) {
     if (strncmp (name, m->media_str, namelen) != 0)
+      continue;
+    if (!is_in_profiles (available_profiles, m->profile))
       continue;
     caps_test = gst_caps_from_string (m->media_str);
     if (gst_caps_is_always_compatible (caps, caps_test)) {

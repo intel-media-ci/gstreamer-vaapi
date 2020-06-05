@@ -613,7 +613,7 @@ gst_vaapiencode_set_format (GstVideoEncoder * venc, GstVideoCodecState * state)
 
     if ((codec =
             gst_vaapi_codec_get_name (gst_vaapi_profile_get_codec
-                (gst_vaapi_profile_from_caps (state->caps)))))
+                (gst_vaapi_profile_from_caps (state->caps, NULL)))))
       gst_tag_list_add (tags, GST_TAG_MERGE_REPLACE, GST_TAG_CODEC, codec,
           NULL);
 

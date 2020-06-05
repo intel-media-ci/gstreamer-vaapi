@@ -427,7 +427,7 @@ set_caps (GstVaapiDecoder * decoder, const GstCaps * caps)
   GstVaapiProfile profile;
   const GValue *v_codec_data;
 
-  profile = gst_vaapi_profile_from_caps (caps);
+  profile = gst_vaapi_profile_from_caps (caps, NULL);
   if (!profile)
     return FALSE;
 
@@ -1173,7 +1173,7 @@ gst_vaapi_decoder_update_caps (GstVaapiDecoder * decoder, GstCaps * caps)
   if (gst_caps_is_always_compatible (caps, decoder_caps))
     return set_caps (decoder, caps);
 
-  profile = gst_vaapi_profile_from_caps (caps);
+  profile = gst_vaapi_profile_from_caps (caps, NULL);
   if (profile == GST_VAAPI_PROFILE_UNKNOWN)
     return FALSE;
   codec = gst_vaapi_profile_get_codec (profile);

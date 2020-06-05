@@ -225,7 +225,7 @@ GstVaapiProfile
 gst_vaapi_profile(VAProfile profile);
 
 GstVaapiProfile
-gst_vaapi_profile_from_caps(const GstCaps *caps);
+gst_vaapi_profile_from_caps(const GstCaps *caps, GArray * available_profiles);
 
 const gchar *
 gst_vaapi_profile_get_name(GstVaapiProfile profile);

@@ -952,7 +952,7 @@ gst_vaapidecode_ensure_display (GstVaapiDecode * decode)
 static inline guint
 gst_vaapi_codec_from_caps (GstCaps * caps)
 {
-  return gst_vaapi_profile_get_codec (gst_vaapi_profile_from_caps (caps));
+  return gst_vaapi_profile_get_codec (gst_vaapi_profile_from_caps (caps, NULL));
 }
 
 static gboolean
