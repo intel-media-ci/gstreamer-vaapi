@@ -1227,6 +1227,24 @@ create_context_from_caps (GstVaapiDecoder * decoder)
   return gst_vaapi_context_new (decoder->display, &cip);
 }
 
+static gint
+cmpformats (gconstpointer a, gconstpointer b, gpointer data)
+{
+  const gint *_a = a;
+  const gint *_b = b;
+  guint *input_bits = data;
+  gint a_bits = GST_VIDEO_FORMAT_INFO_BITS (gst_video_format_get_info (*_a));
+  gint b_bits = GST_VIDEO_FORMAT_INFO_BITS (gst_video_format_get_info (*_b));
+  gint a_w = 1, b_w = 1;
+
+  if (a_bits >= *input_bits)
+    a_w = -1;
+  if (b_bits >= *input_bits)
+    b_w = -1;
+
+  return (*_a * a_w) - (*_b * b_w);
+}
+
 /**
  * gst_vaapi_decoder_get_surface_attributres:
  * @decoder: a #GstVaapiDecoder instances
@@ -1245,6 +1263,7 @@ gst_vaapi_decoder_get_surface_attributes (GstVaapiDecoder * decoder,
     guint * mem_types)
 {
   gboolean ret, test_ctxt = FALSE;
+  GstCaps *caps;
   GstVaapiContext *context = NULL;
   GstVaapiConfigSurfaceAttributes attribs = { 0, };
 
@@ -1267,6 +1286,16 @@ gst_vaapi_decoder_get_surface_attributes (GstVaapiDecoder * decoder,
   if (attribs.formats->len == 0) {
     g_array_unref (attribs.formats);
     return NULL;
+  }
+
+  if ((caps = get_caps (decoder))) {
+    GstStructure *st = gst_caps_get_structure (caps, 0);
+    guint depth = 0;
+
+    if (!gst_structure_get_uint (st, "bit-depth-chroma", &depth))
+      depth = 8;
+
+    g_array_sort_with_data (attribs.formats, cmpformats, &depth);
   }
 
   if (min_width)
