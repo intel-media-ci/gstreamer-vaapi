@@ -65,11 +65,6 @@ G_GNUC_INTERNAL
 GstVaapiProfile
 gst_vaapi_utils_h265_get_profile (GstH265SPS * sps);
 
-/* Returns H.265 profile_idc value from GstVaapiProfile */
-G_GNUC_INTERNAL
-guint8
-gst_vaapi_utils_h265_get_profile_idc (GstVaapiProfile profile);
-
 /* Returns GstVaapiLevelH265 from H.265 level_idc value */
 G_GNUC_INTERNAL
 GstVaapiLevelH265

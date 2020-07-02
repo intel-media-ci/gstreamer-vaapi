@@ -98,6 +98,10 @@ gst_vaapi_utils_h265_get_profile_score (GstVaapiProfile profile);
 GstVaapiProfile
 gst_vaapi_utils_h265_get_profile_from_string (const gchar * str);
 
+/* Returns H.265 profile_idc value from GstVaapiProfile */
+guint8
+gst_vaapi_utils_h265_get_profile_idc (GstVaapiProfile profile);
+
 /* Returns a string representation for the supplied H.265 profile */
 const gchar *
 gst_vaapi_utils_h265_get_profile_string (GstVaapiProfile profile);
