@@ -1125,26 +1125,89 @@ ensure_profile_limits (GstVaapiEncoderH265 * encoder)
   return TRUE;
 }
 
-/* Derives the minimum profile from the active coding tools */
+static gboolean
+is_profile_allowed (GstVaapiEncoderH265 * encoder, GstVaapiProfile profile)
+{
+  guint i;
+
+  if (encoder->allowed_profiles == NULL)
+    return TRUE;
+
+  for (i = 0; i < encoder->allowed_profiles->len; i++)
+    if (profile ==
+        g_array_index (encoder->allowed_profiles, GstVaapiProfile, i))
+      return TRUE;
+
+  return FALSE;
+}
+
+/* Derives the profile from the active coding tools. */
 static gboolean
 ensure_profile (GstVaapiEncoderH265 * encoder)
 {
   GstVaapiProfile profile;
   const GstVideoFormat format =
       GST_VIDEO_INFO_FORMAT (GST_VAAPI_ENCODER_VIDEO_INFO (encoder));
+  guint depth, chrome;
+  GstVaapiProfile profile_candidates[5];
+  guint num, i;
 
-  /* Always start from "Main" profile for maximum
-     compatibility */
-  profile = GST_VAAPI_PROFILE_H265_MAIN;
+  if (!GST_VIDEO_FORMAT_INFO_IS_YUV (gst_video_format_get_info (format)))
+    return FALSE;
 
-  if (format == GST_VIDEO_FORMAT_P010_10LE)
-    profile = GST_VAAPI_PROFILE_H265_MAIN10;
-  else if (format == GST_VIDEO_FORMAT_VUYA)
-    profile = GST_VAAPI_PROFILE_H265_MAIN_444;
-  else if (format == GST_VIDEO_FORMAT_Y410)
-    profile = GST_VAAPI_PROFILE_H265_MAIN_444_10;
-  else if (format == GST_VIDEO_FORMAT_Y210 || format == GST_VIDEO_FORMAT_YUY2)
-    profile = GST_VAAPI_PROFILE_H265_MAIN_422_10;
+  depth = GST_VIDEO_FORMAT_INFO_DEPTH (gst_video_format_get_info (format), 0);
+  chrome = gst_vaapi_utils_h265_get_chroma_format_idc
+      (gst_vaapi_video_format_get_chroma_type
+      (GST_VIDEO_INFO_FORMAT (GST_VAAPI_ENCODER_VIDEO_INFO (encoder))));
+
+  num = 0;
+
+  if (chrome == 3) {
+    /* 4:4:4 */
+    if (depth == 8)
+      profile_candidates[num++] = GST_VAAPI_PROFILE_H265_MAIN_444;
+    if (depth <= 10)
+      profile_candidates[num++] = GST_VAAPI_PROFILE_H265_MAIN_444_10;
+  } else if (chrome == 2) {
+    /* 4:2:2 */
+    profile_candidates[num++] = GST_VAAPI_PROFILE_H265_MAIN_422_10;
+  } else if (chrome == 1 || chrome == 0) {
+    /* 4:2:0 or 4:0:0 */
+    if (depth == 8)
+      profile_candidates[num++] = GST_VAAPI_PROFILE_H265_MAIN;
+    if (depth <= 10)
+      profile_candidates[num++] = GST_VAAPI_PROFILE_H265_MAIN10;
+    /* Always add STILL_PICTURE as a candidate. */
+    profile_candidates[num++] = GST_VAAPI_PROFILE_H265_MAIN_STILL_PICTURE;
+  }
+
+  if (num == 0) {
+    GST_ERROR ("Fail to find a profile for format %s.",
+        gst_video_format_to_string (format));
+    return FALSE;
+  }
+
+  /* The profile should both exist in the allowed list and be
+     supported by hw */
+  profile = GST_VAAPI_PROFILE_UNKNOWN;
+  for (i = 0; i < num; i++) {
+    if (!is_profile_allowed (encoder, profile_candidates[i]))
+      continue;
+    /* If we can get valid entrypoint, hw must support this profile. */
+    if (gst_vaapi_encoder_get_entrypoint (GST_VAAPI_ENCODER_CAST (encoder),
+            profile_candidates[i]) == GST_VAAPI_ENTRYPOINT_INVALID)
+      continue;
+
+    profile = profile_candidates[i];
+    break;
+  }
+
+  if (profile == GST_VAAPI_PROFILE_UNKNOWN) {
+    GST_ERROR ("Fail to find a supported profile %sfor format %s.",
+        GST_VAAPI_ENCODER_TUNE (encoder) == GST_VAAPI_ENCODER_TUNE_LOW_POWER ?
+        "in low power mode " : "", gst_video_format_to_string (format));
+    return FALSE;
+  }
 
   encoder->profile = profile;
   encoder->profile_idc = gst_vaapi_utils_h265_get_profile_idc (profile);
