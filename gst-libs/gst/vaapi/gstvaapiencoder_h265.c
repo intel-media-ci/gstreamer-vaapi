@@ -1056,75 +1056,6 @@ _check_vps_sps_pps_status (GstVaapiEncoderH265 * encoder,
   }
 }
 
-/* Derives the profile supported by the underlying hardware */
-static gboolean
-ensure_hw_profile (GstVaapiEncoderH265 * encoder)
-{
-  GstVaapiDisplay *const display = GST_VAAPI_ENCODER_DISPLAY (encoder);
-  GstVaapiEntrypoint entrypoint = encoder->entrypoint;
-  GstVaapiProfile profile, profiles[4];
-  guint i, num_profiles = 0;
-
-  profiles[num_profiles++] = encoder->profile;
-  switch (encoder->profile) {
-    case GST_VAAPI_PROFILE_H265_MAIN_STILL_PICTURE:
-      profiles[num_profiles++] = GST_VAAPI_PROFILE_H265_MAIN;
-      // fall-through
-    case GST_VAAPI_PROFILE_H265_MAIN:
-      profiles[num_profiles++] = GST_VAAPI_PROFILE_H265_MAIN10;
-      break;
-    default:
-      break;
-  }
-
-  profile = GST_VAAPI_PROFILE_UNKNOWN;
-  for (i = 0; i < num_profiles; i++) {
-    if (gst_vaapi_display_has_encoder (display, profiles[i], entrypoint)) {
-      profile = profiles[i];
-      break;
-    }
-  }
-  if (profile == GST_VAAPI_PROFILE_UNKNOWN)
-    goto error_unsupported_profile;
-
-  GST_VAAPI_ENCODER_CAST (encoder)->profile = profile;
-  return TRUE;
-
-  /* ERRORS */
-error_unsupported_profile:
-  {
-    GST_ERROR ("unsupported HW profile %s",
-        gst_vaapi_profile_get_va_name (encoder->profile));
-    return FALSE;
-  }
-}
-
-/* Check target decoder constraints */
-static gboolean
-ensure_profile_limits (GstVaapiEncoderH265 * encoder)
-{
-  gint i;
-
-  if (!encoder->allowed_profiles)
-    return TRUE;
-
-  for (i = 0; i < encoder->allowed_profiles->len; i++) {
-    if (encoder->profile ==
-        g_array_index (encoder->allowed_profiles, GstVaapiProfile, i))
-      return TRUE;
-  }
-
-  GST_WARNING
-      ("Needs to lower coding tools to meet target decoder constraints");
-  GST_WARNING ("Only supporting Main profile, reset profile to Main");
-
-  encoder->profile = GST_VAAPI_PROFILE_H265_MAIN;
-  encoder->profile_idc =
-      gst_vaapi_utils_h265_get_profile_idc (encoder->profile);
-
-  return TRUE;
-}
-
 static gboolean
 is_profile_allowed (GstVaapiEncoderH265 * encoder, GstVaapiProfile profile)
 {
@@ -2326,16 +2257,13 @@ ensure_profile_tier_level (GstVaapiEncoderH265 * encoder)
   const GstVaapiTierH265 tier = encoder->tier;
   const GstVaapiLevelH265 level = encoder->level;
 
-  if (!ensure_profile (encoder) || !ensure_profile_limits (encoder))
+  if (!ensure_profile (encoder))
     return GST_VAAPI_ENCODER_STATUS_ERROR_UNSUPPORTED_PROFILE;
 
   encoder->entrypoint =
       gst_vaapi_encoder_get_entrypoint (GST_VAAPI_ENCODER_CAST (encoder),
       encoder->profile);
-  if (encoder->entrypoint == GST_VAAPI_ENTRYPOINT_INVALID) {
-    GST_WARNING ("Cannot find valid entrypoint");
-    return GST_VAAPI_ENCODER_STATUS_ERROR_UNSUPPORTED_PROFILE;
-  }
+  g_assert (encoder->entrypoint != GST_VAAPI_ENTRYPOINT_INVALID);
 
   /* Ensure bitrate if not set already and derive the right level to use */
   ensure_bitrate (encoder);
@@ -3115,8 +3043,7 @@ set_context_info (GstVaapiEncoder * base_encoder)
   base_encoder->codedbuf_size += encoder->num_slices * (4 +
       GST_ROUND_UP_8 (MAX_SLICE_HDR_SIZE + MAX_SHORT_TERM_REFPICSET_SIZE) / 8);
 
-  if (!ensure_hw_profile (encoder))
-    return GST_VAAPI_ENCODER_STATUS_ERROR_UNSUPPORTED_PROFILE;
+  GST_VAAPI_ENCODER_CAST (encoder)->profile = encoder->profile;
 
   base_encoder->num_ref_frames = (encoder->num_ref_frames
       + (encoder->num_bframes > 0 ? 1 : 0) + DEFAULT_SURFACES_COUNT);
