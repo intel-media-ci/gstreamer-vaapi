@@ -51,7 +51,6 @@ typedef void (*GstVaapiDecoderStateChangedFunc) (GstVaapiDecoder * decoder,
  * @GST_VAAPI_DECODER_STATUS_ERROR_INIT_FAILED: Decoder initialization failure.
  * @GST_VAAPI_DECODER_STATUS_ERROR_UNSUPPORTED_CODEC: Unsupported codec.
  * @GST_VAAPI_DECODER_STATUS_ERROR_NO_DATA: Not enough input data to decode.
- * @GST_VAAPI_DECODER_STATUS_ERROR_NO_SURFACE: No surface left to hold the decoded picture.
  * @GST_VAAPI_DECODER_STATUS_ERROR_INVALID_SURFACE: Invalid surface.
  * @GST_VAAPI_DECODER_STATUS_ERROR_BITSTREAM_PARSER: Invalid or unsupported bitstream data.
  * @GST_VAAPI_DECODER_STATUS_ERROR_UNSUPPORTED_PROFILE: Unsupported codec profile.
@@ -68,7 +67,6 @@ typedef enum {
   GST_VAAPI_DECODER_STATUS_ERROR_INIT_FAILED,
   GST_VAAPI_DECODER_STATUS_ERROR_UNSUPPORTED_CODEC,
   GST_VAAPI_DECODER_STATUS_ERROR_NO_DATA,
-  GST_VAAPI_DECODER_STATUS_ERROR_NO_SURFACE,
   GST_VAAPI_DECODER_STATUS_ERROR_INVALID_SURFACE,
   GST_VAAPI_DECODER_STATUS_ERROR_BITSTREAM_PARSER,
   GST_VAAPI_DECODER_STATUS_ERROR_UNSUPPORTED_PROFILE,
@@ -135,9 +133,6 @@ gst_vaapi_decoder_flush (GstVaapiDecoder * decoder);
 
 GstVaapiDecoderStatus
 gst_vaapi_decoder_reset (GstVaapiDecoder * decoder);
-
-GstVaapiDecoderStatus
-gst_vaapi_decoder_check_status (GstVaapiDecoder * decoder);
 
 gboolean
 gst_vaapi_decoder_update_caps (GstVaapiDecoder * decoder, GstCaps * caps);
