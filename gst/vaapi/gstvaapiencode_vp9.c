@@ -49,19 +49,6 @@ GST_DEBUG_CATEGORY_STATIC (gst_vaapi_vp9_encode_debug);
 #define GST_CODEC_CAPS                          \
   "video/x-vp9"
 
-/* *INDENT-OFF* */
-static const char gst_vaapiencode_vp9_src_caps_str[] =
-  GST_CODEC_CAPS;
-/* *INDENT-ON* */
-
-/* *INDENT-OFF* */
-static GstStaticPadTemplate gst_vaapiencode_vp9_src_factory =
-  GST_STATIC_PAD_TEMPLATE ("src",
-      GST_PAD_SRC,
-      GST_PAD_ALWAYS,
-      GST_STATIC_CAPS (gst_vaapiencode_vp9_src_caps_str));
-/* *INDENT-ON* */
-
 #define EXTRA_FORMATS {}
 
 /* vp9 encode */
@@ -104,6 +91,8 @@ gst_vaapiencode_vp9_class_init (GstVaapiEncodeVP9Class * klass, gpointer data)
   GstVaapiEncodeClass *const encode_class = GST_VAAPIENCODE_CLASS (klass);
   GstCaps *sink_caps =
       GST_CAPS_CAST (((struct EncodeInitData *) data)->sink_caps);
+  GstCaps *src_caps =
+      GST_CAPS_CAST (((struct EncodeInitData *) data)->src_caps);
   gpointer encoder_class;
 
   object_class->finalize = gst_vaapiencode_vp9_finalize;
@@ -126,8 +115,10 @@ gst_vaapiencode_vp9_class_init (GstVaapiEncodeVP9Class * klass, gpointer data)
   gst_caps_unref (sink_caps);
 
   /* src pad */
+  g_assert (src_caps);
   gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&gst_vaapiencode_vp9_src_factory));
+      gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS, src_caps));
+  gst_caps_unref (src_caps);
 
   encoder_class = g_type_class_ref (GST_TYPE_VAAPI_ENCODER_VP9);
   g_assert (encoder_class);
