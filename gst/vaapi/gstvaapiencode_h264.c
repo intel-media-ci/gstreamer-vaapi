@@ -238,15 +238,24 @@ gst_vaapiencode_h264_set_config (GstVaapiEncode * base_encode)
   GstVaapiEncodeH264 *const encode = GST_VAAPIENCODE_H264_CAST (base_encode);
   GstVaapiEncoderH264 *const encoder =
       GST_VAAPI_ENCODER_H264 (base_encode->encoder);
+  GList *list;
+  GstPadTemplate *templ;
   GstCaps *template_caps, *allowed_caps;
   gboolean ret = TRUE;
 
-  template_caps =
-      gst_static_pad_template_get_caps (&gst_vaapiencode_h264_src_factory);
+  list = gst_element_get_pad_template_list (GST_ELEMENT (base_encode));
+  g_assert (list);
+  templ = (GstPadTemplate *) list->data;
+  if (GST_PAD_TEMPLATE_DIRECTION (templ) == GST_PAD_SINK) {
+    list = g_list_next (list);
+    templ = (GstPadTemplate *) list->data;
+  }
+  g_assert (GST_PAD_TEMPLATE_DIRECTION (templ) == GST_PAD_SRC);
+  template_caps = gst_pad_template_get_caps (templ);
   allowed_caps =
       gst_pad_get_allowed_caps (GST_VAAPI_PLUGIN_BASE_SRC_PAD (encode));
 
-  if (allowed_caps == template_caps) {
+  if (gst_caps_is_equal (allowed_caps, template_caps)) {
     GST_INFO_OBJECT (encode, "downstream has ANY caps, outputting byte-stream");
     encode->is_avc = FALSE;
     gst_caps_unref (allowed_caps);
