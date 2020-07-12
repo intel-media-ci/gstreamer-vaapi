@@ -380,17 +380,16 @@ gst_vaapi_profile_from_codec_data (GstVaapiCodec codec, GstBuffer * buffer)
 }
 
 /**
- * gst_vaapi_profile_from_caps:
+ * gst_vaapi_get_codec_from_caps:
  * @caps: a #GstCaps
  *
- * Converts @caps into the corresponding #GstVaapiProfile. If the
- * profile cannot be represented by #GstVaapiProfile, then zero is
- * returned.
+ * Converts @caps into the corresponding #GstVaapiCodec. If we can
+ * not recognize the #GstVaapiCodec, then zero is returned.
  *
- * Return value: the #GstVaapiProfile describing the @caps
+ * Return value: the #GstVaapiCodec describing the @caps
  */
-GstVaapiProfile
-gst_vaapi_profile_from_caps (const GstCaps * caps)
+GstVaapiCodec
+gst_vaapi_get_codec_from_caps (const GstCaps * caps)
 {
   const GstVaapiProfileMap *m;
   GstCaps *caps_test;
@@ -452,7 +451,14 @@ gst_vaapi_profile_from_caps (const GstCaps * caps)
     }
     gst_caps_unref (caps_test);
   }
-  return profile ? profile : best_profile;
+
+  if (!profile)
+    profile = best_profile;
+
+  if (!profile)
+    return 0;
+
+  return gst_vaapi_profile_get_codec (profile);
 }
 
 /**

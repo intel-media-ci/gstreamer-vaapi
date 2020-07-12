@@ -224,8 +224,8 @@ gst_vaapi_codec_get_name(GstVaapiCodec codec);
 GstVaapiProfile
 gst_vaapi_profile(VAProfile profile);
 
-GstVaapiProfile
-gst_vaapi_profile_from_caps(const GstCaps *caps);
+GstVaapiCodec
+gst_vaapi_get_codec_from_caps (const GstCaps * caps);
 
 const gchar *
 gst_vaapi_profile_get_name(GstVaapiProfile profile);

@@ -187,8 +187,7 @@ identify_codec (const gchar * filename)
   g_list_free (type_list);
 
   if (cip->probability >= GST_TYPE_FIND_LIKELY)
-    codec =
-        gst_vaapi_profile_get_codec (gst_vaapi_profile_from_caps (cip->caps));
+    codec = gst_vaapi_get_codec_from_caps (cip->caps);
 
   codec_identifier_free (cip);
   return codec;
