@@ -2523,6 +2523,15 @@ init_picture_refs_mvc (GstVaapiDecoderH264 * decoder,
 #undef INVOKE_INIT_PICTURE_REFS_MVC
 }
 
+static void
+mark_remaining_as_no_reference (GstVaapiPictureH264 ** ref_list,
+    guint count, guint active_minus1)
+{
+  for (guint i = count; i <= active_minus1; i++) {
+    ref_list[i] = NULL;
+  }
+}
+
 static gboolean
 init_picture_refs_p_slice (GstVaapiDecoderH264 * decoder,
     GstVaapiPictureH264 * picture, GstH264SliceHdr * slice_hdr)
@@ -2581,6 +2590,8 @@ init_picture_refs_p_slice (GstVaapiDecoderH264 * decoder,
     /* RefPicList0 */
     ret = init_picture_refs_mvc (decoder, picture, slice_hdr, 0);
   }
+  mark_remaining_as_no_reference (&priv->RefPicList0[0],
+      priv->RefPicList0_count, slice_hdr->num_ref_idx_l0_active_minus1);
 
   return ret;
 }
@@ -2738,6 +2749,10 @@ init_picture_refs_b_slice (GstVaapiDecoderH264 * decoder,
     /* RefPicList1 */
     ret = init_picture_refs_mvc (decoder, picture, slice_hdr, 1);
   }
+  mark_remaining_as_no_reference (&priv->RefPicList0[0],
+      priv->RefPicList0_count, slice_hdr->num_ref_idx_l0_active_minus1);
+  mark_remaining_as_no_reference (&priv->RefPicList1[0],
+      priv->RefPicList1_count, slice_hdr->num_ref_idx_l1_active_minus1);
 
   return ret;
 }
