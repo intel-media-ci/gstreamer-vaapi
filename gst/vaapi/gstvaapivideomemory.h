@@ -61,8 +61,6 @@ typedef struct _GstVaapiDmaBufAllocatorClass GstVaapiDmaBufAllocatorClass;
 
 /**
  * GstVaapiVideoMemoryMapType:
- * @GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_SURFACE: map with gst_buffer_map()
- *   and flags = 0x00 to return a #GstVaapiSurfaceProxy
  * @GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_PLANAR: map individual plane with
  *   gst_video_frame_map()
  * @GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_LINEAR: map with gst_buffer_map()
@@ -72,7 +70,6 @@ typedef struct _GstVaapiDmaBufAllocatorClass GstVaapiDmaBufAllocatorClass;
  */
 typedef enum
 {
-  GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_SURFACE = 1,
   GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_PLANAR,
   GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_LINEAR
 } GstVaapiVideoMemoryMapType;

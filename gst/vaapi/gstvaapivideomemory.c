@@ -438,16 +438,6 @@ gst_vaapi_video_memory_map (GstMemory * base_mem, gsize maxsize, guint flags)
   g_mutex_lock (&mem->lock);
   if (mem->map_count == 0) {
     switch (flags & GST_MAP_READWRITE) {
-      case 0:
-        // No flags set: return a GstVaapiSurfaceProxy
-        gst_vaapi_surface_proxy_replace (&mem->proxy,
-            gst_vaapi_video_meta_get_surface_proxy (mem->meta));
-        if (!mem->proxy)
-          goto error_no_surface_proxy;
-        if (!ensure_surface_is_current (mem))
-          goto error_no_current_surface;
-        mem->map_type = GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_SURFACE;
-        break;
       case GST_MAP_READ:
         if (!map_vaapi_memory (mem, flags))
           goto out;
@@ -459,11 +449,6 @@ gst_vaapi_video_memory_map (GstMemory * base_mem, gsize maxsize, guint flags)
   }
 
   switch (mem->map_type) {
-    case GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_SURFACE:
-      if (!mem->proxy)
-        goto error_no_surface_proxy;
-      data = mem->proxy;
-      break;
     case GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_LINEAR:
       if (!mem->image)
         goto error_no_image;
@@ -489,16 +474,6 @@ error_unsupported_map_type:
     GST_ERROR ("unsupported map type (%d)", mem->map_type);
     goto out;
   }
-error_no_surface_proxy:
-  {
-    GST_ERROR ("failed to extract GstVaapiSurfaceProxy from video meta");
-    goto out;
-  }
-error_no_current_surface:
-  {
-    GST_ERROR ("failed to make surface current");
-    goto out;
-  }
 error_no_image:
   {
     GST_ERROR ("failed to extract VA image from video buffer");
@@ -514,9 +489,6 @@ gst_vaapi_video_memory_unmap_full (GstMemory * base_mem, GstMapInfo * info)
   g_mutex_lock (&mem->lock);
   if (mem->map_count == 1) {
     switch (mem->map_type) {
-      case GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_SURFACE:
-        gst_vaapi_surface_proxy_replace (&mem->proxy, NULL);
-        break;
       case GST_VAAPI_VIDEO_MEMORY_MAP_TYPE_LINEAR:
         unmap_vaapi_memory (mem, info->flags);
         break;
