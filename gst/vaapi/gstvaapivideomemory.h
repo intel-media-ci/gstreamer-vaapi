@@ -176,11 +176,11 @@ struct _GstVaapiVideoAllocator
   GstAllocator parent_instance;
 
   /*< private >*/
+  GstVaapiDisplay *display;
   GstVideoInfo allocation_info;
   GstVideoInfo surface_info;
   GstVaapiVideoPool *surface_pool;
   GstVideoInfo image_info;
-  GstVaapiVideoPool *image_pool;
   GstVaapiImageUsageFlags usage_flag;
 };
 

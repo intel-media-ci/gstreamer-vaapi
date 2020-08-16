@@ -137,7 +137,10 @@ ensure_image (GstVaapiVideoMemory * mem)
     GstVaapiVideoAllocator *const allocator =
         GST_VAAPI_VIDEO_ALLOCATOR_CAST (GST_MEMORY_CAST (mem)->allocator);
 
-    mem->image = gst_vaapi_video_pool_get_object (allocator->image_pool);
+    mem->image = gst_vaapi_image_new (allocator->display,
+        GST_VIDEO_INFO_FORMAT (&allocator->image_info),
+        GST_VIDEO_INFO_WIDTH (&allocator->image_info),
+        GST_VIDEO_INFO_HEIGHT (&allocator->image_info));
     if (!mem->image)
       return FALSE;
   }
@@ -265,17 +268,14 @@ error_map_image:
 static inline void
 unmap_vaapi_memory (GstVaapiVideoMemory * mem, GstMapFlags flags)
 {
-  gst_vaapi_image_unmap (mem->image);
-
   if (flags & GST_MAP_WRITE) {
     GST_VAAPI_VIDEO_MEMORY_FLAG_SET (mem,
         GST_VAAPI_VIDEO_MEMORY_FLAG_IMAGE_IS_CURRENT);
   }
 
-  if (!use_native_formats (mem->usage_flag)) {
-    gst_vaapi_video_meta_set_image (mem->meta, NULL);
-    gst_vaapi_video_memory_reset_image (mem);
-  }
+  gst_vaapi_image_unmap (mem->image);
+  ensure_surface_is_current (mem);
+  gst_vaapi_video_memory_reset_image (mem);
 }
 
 gboolean
@@ -386,17 +386,14 @@ gst_vaapi_video_memory_new (GstAllocator * base_allocator,
   return GST_MEMORY_CAST (mem);
 }
 
-void
+static void
 gst_vaapi_video_memory_reset_image (GstVaapiVideoMemory * mem)
 {
-  GstVaapiVideoAllocator *const allocator =
-      GST_VAAPI_VIDEO_ALLOCATOR_CAST (GST_MEMORY_CAST (mem)->allocator);
-
-  if (!use_native_formats (mem->usage_flag))
+  /* If need to derive the image, we discard the image.
+     Or, we can cache the image. */
+  if (!use_native_formats (mem->usage_flag)) {
     gst_mini_object_replace ((GstMiniObject **) & mem->image, NULL);
-  else if (mem->image) {
-    gst_vaapi_video_pool_put_object (allocator->image_pool, mem->image);
-    mem->image = NULL;
+    gst_vaapi_video_meta_set_image (mem->meta, NULL);
   }
 
   /* Don't synchronize to surface, this shall have happened during
@@ -577,6 +574,10 @@ gst_vaapi_video_allocator_free (GstAllocator * allocator, GstMemory * base_mem)
 
   mem->surface = NULL;
   gst_vaapi_video_memory_reset_image (mem);
+  if (mem->image) {
+    gst_mini_object_replace ((GstMiniObject **) & mem->image, NULL);
+    gst_vaapi_video_meta_set_image (mem->meta, NULL);
+  }
   gst_vaapi_surface_proxy_replace (&mem->proxy, NULL);
   gst_vaapi_video_meta_replace (&mem->meta, NULL);
   g_mutex_clear (&mem->lock);
@@ -590,8 +591,8 @@ gst_vaapi_video_allocator_finalize (GObject * object)
       GST_VAAPI_VIDEO_ALLOCATOR_CAST (object);
 
   gst_vaapi_video_pool_replace (&allocator->surface_pool, NULL);
-  gst_vaapi_video_pool_replace (&allocator->image_pool, NULL);
 
+  gst_object_unref (allocator->display);
   G_OBJECT_CLASS (gst_vaapi_video_allocator_parent_class)->finalize (object);
 }
 
@@ -908,6 +909,7 @@ allocator_params_init (GstVaapiVideoAllocator * allocator,
     GstVaapiDisplay * display, const GstVideoInfo * alloc_info,
     guint surface_alloc_flags, GstVaapiImageUsageFlags req_usage_flag)
 {
+  allocator->display = gst_object_ref (display);
   allocator->allocation_info = *alloc_info;
 
   if (!allocator_configure_surface_info (display, allocator, req_usage_flag,
@@ -920,10 +922,6 @@ allocator_params_init (GstVaapiVideoAllocator * allocator,
 
   if (!allocator_configure_image_info (display, allocator))
     return FALSE;
-  allocator->image_pool = gst_vaapi_image_pool_new (display,
-      &allocator->image_info);
-  if (!allocator->image_pool)
-    goto error_create_image_pool;
 
   gst_allocator_set_vaapi_video_info (GST_ALLOCATOR_CAST (allocator),
       &allocator->image_info, surface_alloc_flags);
@@ -934,11 +932,6 @@ allocator_params_init (GstVaapiVideoAllocator * allocator,
 error_create_surface_pool:
   {
     GST_ERROR ("failed to allocate VA surface pool");
-    return FALSE;
-  }
-error_create_image_pool:
-  {
-    GST_ERROR ("failed to allocate VA image pool");
     return FALSE;
   }
 }
