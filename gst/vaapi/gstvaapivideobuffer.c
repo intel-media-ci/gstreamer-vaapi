@@ -32,6 +32,7 @@
 
 #include "gstcompat.h"
 #include "gstvaapivideobuffer.h"
+#include "gstvaapivideomemory.h"
 
 static GstBuffer *
 new_vbuffer (GstVaapiVideoMeta * meta)
@@ -85,4 +86,34 @@ GstBuffer *
 gst_vaapi_video_buffer_new_with_surface_proxy (GstVaapiSurfaceProxy * proxy)
 {
   return new_vbuffer (gst_vaapi_video_meta_new_with_surface_proxy (proxy));
+}
+
+GstVaapiSurfaceProxy *
+gst_vaapi_video_buffer_get_video_mem_surface_proxy (GstBuffer * buffer)
+{
+  GstVaapiSurfaceProxy *proxy;
+  GstVaapiVideoMeta *meta = gst_buffer_get_vaapi_video_meta (buffer);
+
+  g_return_val_if_fail (meta != NULL, NULL);
+
+  proxy = gst_vaapi_video_meta_get_surface_proxy (meta);
+  return proxy;
+}
+
+/* Only video memory can change the underlying surface. */
+gboolean
+gst_vaapi_video_buffer_set_video_mem_surface_proxy (GstBuffer * buffer,
+    GstVaapiSurfaceProxy * proxy)
+{
+  GstVaapiVideoMeta *meta = gst_buffer_get_vaapi_video_meta (buffer);
+  GstMemory *const mem = gst_buffer_peek_memory (buffer, 0);
+
+  g_return_val_if_fail (meta != NULL, FALSE);
+  g_return_val_if_fail (GST_VAAPI_IS_VIDEO_MEMORY (mem), FALSE);
+
+  /* Reset the underlying surface proxy */
+  gst_vaapi_video_memory_set_surface_proxy (GST_VAAPI_VIDEO_MEMORY_CAST (mem),
+      proxy);
+
+  return TRUE;
 }

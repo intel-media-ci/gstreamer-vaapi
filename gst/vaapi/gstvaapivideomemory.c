@@ -415,6 +415,27 @@ gst_vaapi_video_memory_reset_surface (GstVaapiVideoMemory * mem)
       GST_VAAPI_VIDEO_MEMORY_FLAG_SURFACE_IS_CURRENT);
 }
 
+void
+gst_vaapi_video_memory_set_surface_proxy (GstVaapiVideoMemory * mem,
+    GstVaapiSurfaceProxy * proxy)
+{
+  if (!mem->external_surface)
+    return;
+
+  gst_vaapi_surface_proxy_replace (&mem->proxy, proxy);
+  if (mem->meta)
+    gst_vaapi_video_meta_set_surface_proxy (mem->meta, proxy);
+
+  mem->surface = proxy ? GST_VAAPI_SURFACE_PROXY_SURFACE (proxy) : NULL;
+  if (mem->surface) {
+    GST_VAAPI_VIDEO_MEMORY_FLAG_SET (mem,
+        GST_VAAPI_VIDEO_MEMORY_FLAG_SURFACE_IS_CURRENT);
+  } else {
+    GST_VAAPI_VIDEO_MEMORY_FLAG_UNSET (mem,
+        GST_VAAPI_VIDEO_MEMORY_FLAG_SURFACE_IS_CURRENT);
+  }
+}
+
 gboolean
 gst_vaapi_video_memory_sync (GstVaapiVideoMemory * mem)
 {

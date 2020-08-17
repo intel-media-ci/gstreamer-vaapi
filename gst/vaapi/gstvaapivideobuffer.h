@@ -55,6 +55,15 @@ G_GNUC_INTERNAL
 GstBuffer *
 gst_vaapi_video_buffer_new_with_surface_proxy (GstVaapiSurfaceProxy * proxy);
 
+G_GNUC_INTERNAL
+GstVaapiSurfaceProxy *
+gst_vaapi_video_buffer_get_video_mem_surface_proxy (GstBuffer * buffer);
+
+G_GNUC_INTERNAL
+gboolean
+gst_vaapi_video_buffer_set_video_mem_surface_proxy (GstBuffer * buffer,
+    GstVaapiSurfaceProxy * proxy);
+
 G_END_DECLS
 
 #endif /* GST_VAAPI_VIDEO_BUFFER_H */

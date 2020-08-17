@@ -120,6 +120,7 @@ struct _GstVaapiVideoMemory
   GstVaapiSurfaceProxy *proxy;
   const GstVideoInfo *surface_info;
   GstVaapiSurface *surface;
+  gboolean external_surface;
   const GstVideoInfo *image_info;
   GstVaapiImage *image;
   GstVaapiVideoMeta *meta;
@@ -146,6 +147,11 @@ gst_video_meta_unmap_vaapi_memory (GstVideoMeta * meta, guint plane,
 G_GNUC_INTERNAL
 void
 gst_vaapi_video_memory_reset_surface (GstVaapiVideoMemory * mem);
+
+G_GNUC_INTERNAL
+void
+gst_vaapi_video_memory_set_surface_proxy (GstVaapiVideoMemory * mem,
+    GstVaapiSurfaceProxy * proxy);
 
 G_GNUC_INTERNAL
 gboolean
