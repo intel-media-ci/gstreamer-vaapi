@@ -57,6 +57,21 @@ typedef struct _GstVaapiVideoBufferPoolPrivate GstVaapiVideoBufferPoolPrivate;
   "GstBufferPoolOptionVaapiVideoMeta"
 
 /**
+ * GstVaapiVideoBufferPoolAcquireFlags:
+ * @GST_VAAPI_VIDEO_BUFFER_POOL_ACQUIRE_FLAG_EXTERNAL_SURFACE: option to
+ *   let the allocator not allocate a surface internally, the surface will
+ *   be specified by caller.
+ *
+ * The set of #GstVaapiVideoBufferPool specific flags for
+ * gst_buffer_pool_acquire_buffer().
+ */
+typedef enum
+{
+  GST_VAAPI_VIDEO_BUFFER_POOL_ACQUIRE_FLAG_EXTERNAL_SURFACE =
+      GST_BUFFER_POOL_ACQUIRE_FLAG_LAST << 1,
+} GstVaapiVideoBufferPoolAcquireFlags;
+
+/**
  * GstVaapiVideoBufferPoolOption:
  * @GST_VAAPI_VIDEO_BUFFER_POOL_OPTION_VIDEO_META:
  * @GST_VAAPI_VIDEO_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT:
