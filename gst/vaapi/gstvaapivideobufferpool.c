@@ -407,7 +407,7 @@ gst_vaapi_video_buffer_pool_alloc_buffer (GstBufferPool * pool,
       mem = gst_vaapi_dmabuf_memory_new (priv->allocator, meta);
     }
   } else {
-    mem = gst_vaapi_video_memory_new (priv->allocator, meta);
+    mem = gst_vaapi_video_memory_new (priv->allocator, meta, FALSE);
   }
   if (!mem)
     goto error_create_memory;

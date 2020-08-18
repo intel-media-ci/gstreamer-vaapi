@@ -120,6 +120,7 @@ struct _GstVaapiVideoMemory
   GstVaapiSurfaceProxy *proxy;
   const GstVideoInfo *surface_info;
   GstVaapiSurface *surface;
+  /* The surface is not created by ourself */
   gboolean external_surface;
   const GstVideoInfo *image_info;
   GstVaapiImage *image;
@@ -132,7 +133,8 @@ struct _GstVaapiVideoMemory
 
 G_GNUC_INTERNAL
 GstMemory *
-gst_vaapi_video_memory_new (GstAllocator * allocator, GstVaapiVideoMeta * meta);
+gst_vaapi_video_memory_new (GstAllocator * allocator,
+    GstVaapiVideoMeta * meta, gboolean external_surface);
 
 G_GNUC_INTERNAL
 gboolean
@@ -146,12 +148,16 @@ gst_video_meta_unmap_vaapi_memory (GstVideoMeta * meta, guint plane,
 
 G_GNUC_INTERNAL
 void
-gst_vaapi_video_memory_reset_surface (GstVaapiVideoMemory * mem);
+gst_vaapi_video_memory_set_surface_proxy (GstVaapiVideoMemory * mem,
+    GstVaapiSurfaceProxy * proxy);
+
+G_GNUC_INTERNAL
+gboolean
+gst_vaapi_video_memory_ensure_surface (GstVaapiVideoMemory * mem);
 
 G_GNUC_INTERNAL
 void
-gst_vaapi_video_memory_set_surface_proxy (GstVaapiVideoMemory * mem,
-    GstVaapiSurfaceProxy * proxy);
+gst_vaapi_video_memory_reset_surface (GstVaapiVideoMemory * mem);
 
 G_GNUC_INTERNAL
 gboolean
@@ -185,7 +191,7 @@ struct _GstVaapiVideoAllocator
   GstVaapiDisplay *display;
   GstVideoInfo allocation_info;
   GstVideoInfo surface_info;
-  GstVaapiVideoPool *surface_pool;
+  guint surface_alloc_flags;
   GstVideoInfo image_info;
   GstVaapiImageUsageFlags usage_flag;
 };

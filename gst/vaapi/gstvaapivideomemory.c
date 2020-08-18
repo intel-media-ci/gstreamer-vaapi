@@ -165,35 +165,6 @@ ensure_image_is_current (GstVaapiVideoMemory * mem)
   return TRUE;
 }
 
-static GstVaapiSurfaceProxy *
-new_surface_proxy (GstVaapiVideoMemory * mem)
-{
-  GstVaapiVideoAllocator *const allocator =
-      GST_VAAPI_VIDEO_ALLOCATOR_CAST (GST_MEMORY_CAST (mem)->allocator);
-
-  return
-      gst_vaapi_surface_proxy_new_from_pool (GST_VAAPI_SURFACE_POOL
-      (allocator->surface_pool));
-}
-
-static gboolean
-ensure_surface (GstVaapiVideoMemory * mem)
-{
-  if (!mem->proxy) {
-    gst_vaapi_surface_proxy_replace (&mem->proxy,
-        gst_vaapi_video_meta_get_surface_proxy (mem->meta));
-
-    if (!mem->proxy) {
-      mem->proxy = new_surface_proxy (mem);
-      if (!mem->proxy)
-        return FALSE;
-      gst_vaapi_video_meta_set_surface_proxy (mem->meta, mem->proxy);
-    }
-  }
-  mem->surface = GST_VAAPI_SURFACE_PROXY_SURFACE (mem->proxy);
-  return mem->surface != NULL;
-}
-
 static gboolean
 ensure_surface_is_current (GstVaapiVideoMemory * mem)
 {
@@ -216,8 +187,8 @@ ensure_surface_is_current (GstVaapiVideoMemory * mem)
 static inline gboolean
 map_vaapi_memory (GstVaapiVideoMemory * mem, GstMapFlags flags)
 {
-  if (!ensure_surface (mem))
-    goto error_no_surface;
+  g_assert (mem->surface);
+
   if (!ensure_image (mem))
     goto error_no_image;
 
@@ -236,14 +207,6 @@ map_vaapi_memory (GstVaapiVideoMemory * mem, GstMapFlags flags)
 
   return TRUE;
 
-error_no_surface:
-  {
-    const GstVideoInfo *const vip = mem->surface_info;
-    GST_ERROR ("failed to extract VA surface of size %ux%u and format %s",
-        GST_VIDEO_INFO_WIDTH (vip), GST_VIDEO_INFO_HEIGHT (vip),
-        GST_VIDEO_INFO_FORMAT_STRING (vip));
-    return FALSE;
-  }
 error_no_image:
   {
     const GstVideoInfo *const vip = mem->image_info;
@@ -352,7 +315,7 @@ gst_video_meta_unmap_vaapi_memory (GstVideoMeta * meta, guint plane,
 
 GstMemory *
 gst_vaapi_video_memory_new (GstAllocator * base_allocator,
-    GstVaapiVideoMeta * meta)
+    GstVaapiVideoMeta * meta, gboolean external_surface)
 {
   GstVaapiVideoAllocator *const allocator =
       GST_VAAPI_VIDEO_ALLOCATOR_CAST (base_allocator);
@@ -360,6 +323,7 @@ gst_vaapi_video_memory_new (GstAllocator * base_allocator,
   GstVaapiVideoMemory *mem;
 
   g_return_val_if_fail (GST_VAAPI_IS_VIDEO_ALLOCATOR (allocator), NULL);
+  g_return_val_if_fail (meta, NULL);
 
   mem = g_slice_new (GstVaapiVideoMemory);
   if (!mem)
@@ -369,24 +333,70 @@ gst_vaapi_video_memory_new (GstAllocator * base_allocator,
   gst_memory_init (&mem->parent_instance, GST_MEMORY_FLAG_NO_SHARE,
       base_allocator, NULL, GST_VIDEO_INFO_SIZE (vip), 0,
       0, GST_VIDEO_INFO_SIZE (vip));
-
   mem->proxy = NULL;
   mem->surface_info = &allocator->surface_info;
   mem->surface = NULL;
+  mem->external_surface = external_surface;
   mem->image_info = &allocator->image_info;
   mem->image = NULL;
-  mem->meta = meta ? gst_vaapi_video_meta_ref (meta) : NULL;
+  mem->meta = gst_vaapi_video_meta_ref (meta);
   mem->map_type = 0;
   mem->map_count = 0;
   mem->usage_flag = allocator->usage_flag;
   g_mutex_init (&mem->lock);
 
-  GST_VAAPI_VIDEO_MEMORY_FLAG_SET (mem,
-      GST_VAAPI_VIDEO_MEMORY_FLAG_SURFACE_IS_CURRENT);
+  g_assert (GST_VIDEO_INFO_FORMAT (&allocator->surface_info) !=
+      GST_VIDEO_FORMAT_ENCODED);
+
+  if (!external_surface) {
+    mem->surface = gst_vaapi_surface_new_full (allocator->display,
+        &allocator->surface_info, allocator->surface_alloc_flags);
+    if (!mem->surface) {
+      GST_WARNING ("Failed to create the surface of format %s, size %dX%d",
+          gst_video_format_to_string (GST_VIDEO_INFO_FORMAT
+              (&allocator->surface_info)),
+          GST_VIDEO_INFO_WIDTH (&allocator->surface_info),
+          GST_VIDEO_INFO_HEIGHT (&allocator->surface_info));
+      gst_memory_unref (GST_MEMORY_CAST (mem));
+      return NULL;
+    }
+
+    mem->proxy = gst_vaapi_surface_proxy_new (mem->surface);
+    if (!mem->proxy) {
+      GST_WARNING ("Failed to create the surface proxy");
+      gst_memory_unref (GST_MEMORY_CAST (mem));
+      return NULL;
+    }
+    /* Let the mem->proxy hold the last ref */
+    gst_vaapi_surface_unref (mem->surface);
+    gst_vaapi_video_meta_set_surface_proxy (mem->meta, mem->proxy);
+  } else {
+    gst_vaapi_surface_proxy_replace (&mem->proxy,
+        gst_vaapi_video_meta_get_surface_proxy (mem->meta));
+    if (mem->proxy) {
+      mem->surface = gst_vaapi_surface_proxy_get_surface (mem->proxy);
+      if (GST_VIDEO_INFO_FORMAT (&allocator->surface_info) !=
+          gst_vaapi_surface_get_format (mem->surface)) {
+        GST_WARNING ("The allocator format is %s, different from specified"
+            " surface's format %s, not allowed",
+            gst_video_format_to_string (GST_VIDEO_INFO_FORMAT
+                (&allocator->surface_info)),
+            gst_video_format_to_string (gst_vaapi_surface_get_format
+                (mem->surface)));
+        gst_memory_unref (GST_MEMORY_CAST (mem));
+        return NULL;
+      }
+    }
+  }
+
+  if (mem->surface)
+    GST_VAAPI_VIDEO_MEMORY_FLAG_SET (mem,
+        GST_VAAPI_VIDEO_MEMORY_FLAG_SURFACE_IS_CURRENT);
+
   return GST_MEMORY_CAST (mem);
 }
 
-static void
+void
 gst_vaapi_video_memory_reset_image (GstVaapiVideoMemory * mem)
 {
   /* If need to derive the image, we discard the image.
@@ -405,23 +415,19 @@ gst_vaapi_video_memory_reset_image (GstVaapiVideoMemory * mem)
 void
 gst_vaapi_video_memory_reset_surface (GstVaapiVideoMemory * mem)
 {
-  mem->surface = NULL;
-  gst_vaapi_video_memory_reset_image (mem);
+  if (!mem->external_surface)
+    return;
+
   gst_vaapi_surface_proxy_replace (&mem->proxy, NULL);
+  mem->surface = NULL;
   if (mem->meta)
     gst_vaapi_video_meta_set_surface_proxy (mem->meta, NULL);
-
-  GST_VAAPI_VIDEO_MEMORY_FLAG_UNSET (mem,
-      GST_VAAPI_VIDEO_MEMORY_FLAG_SURFACE_IS_CURRENT);
 }
 
 void
 gst_vaapi_video_memory_set_surface_proxy (GstVaapiVideoMemory * mem,
     GstVaapiSurfaceProxy * proxy)
 {
-  if (!mem->external_surface)
-    return;
-
   gst_vaapi_surface_proxy_replace (&mem->proxy, proxy);
   if (mem->meta)
     gst_vaapi_video_meta_set_surface_proxy (mem->meta, proxy);
@@ -434,6 +440,49 @@ gst_vaapi_video_memory_set_surface_proxy (GstVaapiVideoMemory * mem,
     GST_VAAPI_VIDEO_MEMORY_FLAG_UNSET (mem,
         GST_VAAPI_VIDEO_MEMORY_FLAG_SURFACE_IS_CURRENT);
   }
+  mem->external_surface = TRUE;
+}
+
+gboolean
+gst_vaapi_video_memory_ensure_surface (GstVaapiVideoMemory * mem)
+{
+  if (mem->external_surface) {
+    /* This may happen if an external one is reset and be acquired
+       again without external surface. */
+    g_assert (!mem->surface);
+    GstVaapiVideoAllocator *const allocator =
+        GST_VAAPI_VIDEO_ALLOCATOR (GST_MEMORY_CAST (mem)->allocator);
+
+    mem->surface = gst_vaapi_surface_new_full (allocator->display,
+        &allocator->surface_info, allocator->surface_alloc_flags);
+    if (!mem->surface) {
+      GST_WARNING ("Failed to create the surface of format %s, size %dX%d",
+          gst_video_format_to_string (GST_VIDEO_INFO_FORMAT
+              (&allocator->surface_info)),
+          GST_VIDEO_INFO_WIDTH (&allocator->surface_info),
+          GST_VIDEO_INFO_HEIGHT (&allocator->surface_info));
+      return FALSE;
+    }
+
+    mem->proxy = gst_vaapi_surface_proxy_new (mem->surface);
+    if (!mem->proxy) {
+      GST_WARNING ("Failed to create the surface proxy");
+      return FALSE;
+    }
+    /* Let the mem->proxy hold the last ref */
+    gst_vaapi_surface_unref (mem->surface);
+    gst_vaapi_video_meta_set_surface_proxy (mem->meta, mem->proxy);
+
+    GST_VAAPI_VIDEO_MEMORY_FLAG_SET (mem,
+        GST_VAAPI_VIDEO_MEMORY_FLAG_SURFACE_IS_CURRENT);
+
+    mem->external_surface = FALSE;
+  } else {
+    /* Internal surface should not be destroyed when reset */
+    g_assert (mem->surface);
+  }
+
+  return TRUE;
 }
 
 gboolean
@@ -557,7 +606,7 @@ gst_vaapi_video_memory_copy (GstMemory * base_mem, gssize offset, gssize size)
   if (!meta)
     goto error_allocate_memory;
 
-  out_mem = gst_vaapi_video_memory_new (allocator, meta);
+  out_mem = gst_vaapi_video_memory_new (allocator, meta, FALSE);
   gst_vaapi_video_meta_unref (meta);
   if (!out_mem)
     goto error_allocate_memory;
@@ -610,8 +659,6 @@ gst_vaapi_video_allocator_finalize (GObject * object)
 {
   GstVaapiVideoAllocator *const allocator =
       GST_VAAPI_VIDEO_ALLOCATOR_CAST (object);
-
-  gst_vaapi_video_pool_replace (&allocator->surface_pool, NULL);
 
   gst_object_unref (allocator->display);
   G_OBJECT_CLASS (gst_vaapi_video_allocator_parent_class)->finalize (object);
@@ -853,6 +900,7 @@ allocator_configure_surface_info (GstVaapiDisplay * display,
           &surface_info, &usage_flag)) {
     allocator->usage_flag = usage_flag;
     allocator->surface_info = surface_info;
+    allocator->surface_alloc_flags = surface_alloc_flags;
     goto success;
   }
 
@@ -862,6 +910,7 @@ allocator_configure_surface_info (GstVaapiDisplay * display,
           &surface_info)) {
     allocator->usage_flag = GST_VAAPI_IMAGE_USAGE_FLAG_NATIVE_FORMATS;
     allocator->surface_info = surface_info;
+    allocator->surface_alloc_flags = surface_alloc_flags;
     goto success;
   }
 
@@ -936,10 +985,6 @@ allocator_params_init (GstVaapiVideoAllocator * allocator,
   if (!allocator_configure_surface_info (display, allocator, req_usage_flag,
           surface_alloc_flags))
     return FALSE;
-  allocator->surface_pool = gst_vaapi_surface_pool_new_full (display,
-      &allocator->surface_info, surface_alloc_flags);
-  if (!allocator->surface_pool)
-    goto error_create_surface_pool;
 
   if (!allocator_configure_image_info (display, allocator))
     return FALSE;
@@ -948,13 +993,6 @@ allocator_params_init (GstVaapiVideoAllocator * allocator,
       &allocator->image_info, surface_alloc_flags);
 
   return TRUE;
-
-  /* ERRORS */
-error_create_surface_pool:
-  {
-    GST_ERROR ("failed to allocate VA surface pool");
-    return FALSE;
-  }
 }
 
 GstAllocator *
