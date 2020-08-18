@@ -383,8 +383,8 @@ gst_vaapi_video_memory_new (GstAllocator * base_allocator,
                 (&allocator->surface_info)),
             gst_video_format_to_string (gst_vaapi_surface_get_format
                 (mem->surface)));
-        gst_memory_unref (GST_MEMORY_CAST (mem));
-        return NULL;
+        //gst_memory_unref (GST_MEMORY_CAST (mem));
+        //return NULL;
       }
     }
   }
