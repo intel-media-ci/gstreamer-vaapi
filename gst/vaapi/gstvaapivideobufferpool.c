@@ -256,7 +256,11 @@ gst_vaapi_video_buffer_pool_set_config (GstBufferPool * pool,
           GST_VIDEO_INFO_PLANE_STRIDE (&new_allocation_vinfo, i) !=
           GST_VIDEO_INFO_PLANE_STRIDE (&priv->vmeta_vinfo, i) ||
           GST_VIDEO_INFO_SIZE (&new_allocation_vinfo) !=
-          GST_VIDEO_INFO_SIZE (&priv->vmeta_vinfo)) {
+          GST_VIDEO_INFO_SIZE (&priv->vmeta_vinfo) ||
+          GST_VIDEO_INFO_HEIGHT (&new_allocation_vinfo) !=
+          GST_VIDEO_INFO_HEIGHT (&priv->vmeta_vinfo) ||
+          GST_VIDEO_INFO_WIDTH (&new_allocation_vinfo) !=
+          GST_VIDEO_INFO_WIDTH (&priv->vmeta_vinfo)) {
         priv->options |= GST_VAAPI_VIDEO_BUFFER_POOL_OPTION_VIDEO_META;
         priv->forced_video_meta = TRUE;
         GST_INFO_OBJECT (base_pool, "adding unrequested video meta");
